@@ -19,5 +19,10 @@ static void run() {
     CHECK(get_string(trick, std::strlen(trick), "emotion", s, sizeof s)); CHECK_STREQ(s, "wink");
     const char* trunc = R"({"emotion":"hap)";
     CHECK(!get_string(trunc, std::strlen(trunc), "emotion", s, sizeof s));
+    const char* f = R"({"temp":12.5,"r":12abc,"g":7 ,"b":8})";
+    CHECK(!get_int(f, std::strlen(f), "temp", &v));
+    CHECK(!get_int(f, std::strlen(f), "r", &v));
+    CHECK(get_int(f, std::strlen(f), "g", &v) && v == 7);
+    CHECK(get_int(f, std::strlen(f), "b", &v) && v == 8);
 }
 TEST_MAIN()
