@@ -27,14 +27,24 @@ err_t on_recv(void*, tcp_pcb* pcb, pbuf* p, err_t) {
 }
 err_t on_connected(void*, tcp_pcb* pcb, err_t err) {
     if (err != ERR_OK) { return finish() ? ERR_ABRT : ERR_OK; }
-    tcp_write(pcb, g_post.req, (u16_t)g_post.len, TCP_WRITE_FLAG_COPY);
+    // On ERR_MEM the POST is never queued. Release the slot now, or busy stays pinned
+    // until the reaper and every event for the next 10 s is dropped for nothing.
+    if (tcp_write(pcb, g_post.req, (u16_t)g_post.len, TCP_WRITE_FLAG_COPY) != ERR_OK) {
+        ++g_post_err_count;
+        return finish() ? ERR_ABRT : ERR_OK;
+    }
     tcp_output(pcb);
     return ERR_OK;
 }
-// tcp_poll interval 2 = ~1 s; reap after ~10 s idle if the brain never answers (mirrors http_server.cpp).
+// tcp_poll interval 2 = ~1 s; reap after ~10 s idle if the brain never answers (mirrors
+// http_server.cpp). Callbacks come off first, so tcp_abort cannot re-enter on_err here.
 err_t on_poll(void*, tcp_pcb*) {
     if (++g_post.idle < 10) return ERR_OK;
-    if (g_post.pcb) tcp_abort(g_post.pcb);
+    if (g_post.pcb) {
+        tcp_arg(g_post.pcb, nullptr); tcp_recv(g_post.pcb, nullptr); tcp_err(g_post.pcb, nullptr);
+        tcp_sent(g_post.pcb, nullptr); tcp_poll(g_post.pcb, nullptr, 0);
+        tcp_abort(g_post.pcb);
+    }
     g_post.pcb = nullptr; g_post.busy = false; g_post.idle = 0;
     return ERR_ABRT;   // mandatory after tcp_abort
 }
