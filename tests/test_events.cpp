@@ -42,5 +42,26 @@ static void run() {
     CHECK(l2.tick(1000, 5.0f) == Event::None);       // starts timing
     CHECK(l2.tick(10000, NAN) == Event::None);       // ignored, timer untouched
     CHECK(l2.tick(31000, 5.0f) == Event::LightLow);  // 30s after 1000, timer not reset by NaN
+
+    // Exact boundaries. Every threshold in both FSMs is >=, and a regression to > would
+    // slip past tests that only ever land a tick or two past the deadline.
+    ButtonFsm b2(1500, 30);
+    CHECK(b2.tick(100, true) == Event::None);        // raw flips, debounce starts at 100
+    CHECK(b2.tick(129, true) == Event::None);        // 29 ms, one short
+    CHECK(b2.tick(130, true) == Event::ButtonPress); // 30 ms exactly
+    CHECK(b2.tick(1629, true) == Event::None);       // 1499 ms held
+    CHECK(b2.tick(1630, true) == Event::ButtonHold); // 1500 ms exactly
+    CHECK(b2.tick(1700, false) == Event::None);      // raw flips back
+    CHECK(b2.tick(1729, false) == Event::None);      // 29 ms
+    CHECK(b2.tick(1730, false) == Event::ButtonRelease);
+    CHECK(!b2.down());
+
+    LightFsm l3(10.0f, 20.0f, 30000);
+    CHECK(l3.tick(500, 5.0f) == Event::None);        // starts timing at 500
+    CHECK(l3.tick(30499, 5.0f) == Event::None);      // 29999 ms sustained
+    CHECK(l3.tick(30500, 5.0f) == Event::LightLow);  // 30000 ms exactly
+    CHECK(l3.is_low());
+    CHECK(l3.tick(31000, 20.0f) == Event::None);     // exactly at high_, and the test is >
+    CHECK(l3.tick(31500, 20.001f) == Event::LightHigh);
 }
 TEST_MAIN()
