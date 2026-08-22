@@ -42,6 +42,7 @@ bool get_int(const char* obj, size_t len, const char* key, long* out) {
     if (v >= end || *v < '0' || *v > '9') return false;
     long acc = 0;
     while (v < end && *v >= '0' && *v <= '9') { acc = acc * 10 + (*v - '0'); ++v; }
+    if (v < end && *v != ',' && *v != '}' && !ws(*v)) return false;
     *out = neg ? -acc : acc;
     return true;
 }
