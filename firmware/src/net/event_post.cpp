@@ -18,7 +18,8 @@ bool finish() {
     g_post.pcb = nullptr; g_post.busy = false; g_post.idle = 0;
     return aborted;
 }
-void on_err(void*, err_t e) { printf("pip: event post err %d\n", (int)e); g_post.pcb = nullptr; finish(); }
+unsigned g_post_err_count = 0;   // bumped on error; no printf in a callback
+void on_err(void*, err_t) { ++g_post_err_count; g_post.pcb = nullptr; finish(); }
 err_t on_recv(void*, tcp_pcb* pcb, pbuf* p, err_t) {
     if (!p) { return finish() ? ERR_ABRT : ERR_OK; }
     tcp_recved(pcb, p->tot_len); pbuf_free(p);   // the brain's reply is not interesting; close once it arrives
@@ -39,7 +40,7 @@ err_t on_poll(void*, tcp_pcb*) {
 }
 }
 bool post_event(const char* host_ip, uint16_t port, const char* json) {
-    if (g_post.busy) { printf("pip: event dropped, post in flight\n"); return false; }
+    if (g_post.busy) return false;
     ip_addr_t addr;
     if (!ipaddr_aton(host_ip, &addr)) return false;
     int n = std::snprintf(g_post.req, sizeof g_post.req,

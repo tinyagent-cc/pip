@@ -83,7 +83,7 @@ int main() {
             if (online) {
                 char js[64]; pip::event_json(pip::event_name(ev), js, sizeof js);
                 cyw43_arch_lwip_begin();
-                pip::net::post_event(PIP_BRAIN_HOST, PIP_BRAIN_PORT, js);
+                if (!pip::net::post_event(PIP_BRAIN_HOST, PIP_BRAIN_PORT, js)) printf("pip: event dropped\n");
                 cyw43_arch_lwip_end();
             }
         }
