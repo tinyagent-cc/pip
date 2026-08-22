@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstdio>
 #include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
@@ -34,30 +35,44 @@ int main() {
     float lux = -1.0f, temp_c = 0.0f;
 #ifndef PIP_LITE
     pip::drv::RgbLed rgb; rgb.init(PIP_RGB_COMMON_ANODE);
+    uint8_t led_r = 0, led_g = 0, led_b = 0;   // last colour /led asked for, restored after a button press
     pip::drv::Veml7700 als; bool have_als = als.init(i2c0);
     printf("pip: veml7700 %s\n", have_als ? "ok" : "absent");
 #endif
-    char ip[16] = "0.0.0.0";
-    bool online = pip::net::wifi_connect(PIP_WIFI_SSID, PIP_WIFI_PASS, 20000, ip);
-    printf("pip: wifi %s ip=%s\n", online ? "up" : "down", ip);
+    // Paint one frame before touching the radio. Otherwise the panel shows whatever was in
+    // its RAM until the first loop iteration, which is the first thing anyone sees on boot.
+    pip::Rect boot = face.tick(0, g_fb);
+#ifndef PIP_LITE
+    lcd.push(g_fb, boot);
+#else
+    (void)boot;
+#endif
     static pip::RealBody body;
-    if (online) {
-        cyw43_arch_lwip_begin();
-        if (!pip::net::http_server_start(PIP_HTTP_PORT, body)) printf("pip: http server failed to start\n");
-        cyw43_arch_lwip_end();
-    }
+    bool online = false, server_started = false;
+    pip::net::wifi_start_async(PIP_WIFI_SSID, PIP_WIFI_PASS, to_ms_since_boot(get_absolute_time()));
     uint32_t next_sense_ms = 0;
     absolute_time_t next = get_absolute_time();
     uint32_t last_ms = to_ms_since_boot(get_absolute_time());
     while (true) {
         uint32_t now_ms = to_ms_since_boot(get_absolute_time());
         uint32_t dt = now_ms - last_ms; last_ms = now_ms;
+        online = pip::net::wifi_poll(now_ms) == pip::net::WifiState::Up;
+        if (online && !server_started) {
+            cyw43_arch_lwip_begin();
+            server_started = pip::net::http_server_start(PIP_HTTP_PORT, body);
+            cyw43_arch_lwip_end();
+            if (server_started) printf("pip: http server on :%u\n", (unsigned)PIP_HTTP_PORT);
+            else printf("pip: http server failed to start on :%u\n", (unsigned)PIP_HTTP_PORT);
+        }
         pip::Event ev = btn.tick(now_ms, pip::drv::button_pressed());
         if (now_ms >= next_sense_ms) {
             next_sense_ms = now_ms + 500;
             temp_c = pip::drv::temp_read_c();
 #ifndef PIP_LITE
-            if (have_als && als.read_lux(lux)) {
+            if (have_als) {
+                // A failed read is not a reading. NAN keeps the last value out of /senses
+                // (protocol.cpp sanitizes it to -1) and the FSM ignores it outright.
+                if (!als.read_lux(lux)) lux = NAN;
                 pip::Event lev = light.tick(now_ms, lux);
                 if (lev != pip::Event::None) ev = lev;   // at most one event per frame is fine at 30 fps
             }
@@ -68,6 +83,7 @@ int main() {
         pip::Chirp pc; if (body.take_chirp(pc)) printf("pip: chirp %s (audio lands with Plan 3b)\n", pip::chirp_name(pc));
         uint8_t r, g, b; if (body.take_led(r, g, b)) {
 #ifndef PIP_LITE
+            led_r = r; led_g = g; led_b = b;
             rgb.set(r, g, b);
 #else
             cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, (r | g | b) != 0);
@@ -77,14 +93,17 @@ int main() {
         if (ev != pip::Event::None) {
             printf("pip: event %s (lux=%.1f temp=%.1f)\n", pip::event_name(ev), (double)lux, (double)temp_c);
 #ifndef PIP_LITE
-            if (ev == pip::Event::ButtonPress) rgb.set(0, 40, 0);
-            if (ev == pip::Event::ButtonRelease) rgb.set(0, 0, 0);
+            // The button borrows the LED for the length of the touch, then hands it back.
+            // /led is the brain's mood channel and a press must not silently destroy it.
+            if (ev == pip::Event::ButtonPress || ev == pip::Event::ButtonHold) rgb.set(0, 40, 0);
+            if (ev == pip::Event::ButtonRelease) rgb.set(led_r, led_g, led_b);
 #endif
             if (online) {
                 char js[64]; pip::event_json(pip::event_name(ev), js, sizeof js);
                 cyw43_arch_lwip_begin();
-                if (!pip::net::post_event(PIP_BRAIN_HOST, PIP_BRAIN_PORT, js)) printf("pip: event dropped\n");
+                bool queued = pip::net::post_event(PIP_BRAIN_HOST, PIP_BRAIN_PORT, js);
                 cyw43_arch_lwip_end();
+                if (!queued) printf("pip: event dropped\n");
             }
         }
         pip::Rect dirty = face.tick(dt, g_fb);
@@ -96,7 +115,10 @@ int main() {
 #ifndef PIP_LITE
         cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, (now_ms / 500) % 2);
 #endif
+        // Resync instead of accumulating: one slow frame (a full-screen push is ~31 ms of
+        // SPI) would otherwise leave next permanently in the past and the loop free-running.
         next = delayed_by_ms(next, 33);
+        if (absolute_time_diff_us(get_absolute_time(), next) < 0) next = get_absolute_time();
         sleep_until(next);
     }
 }
