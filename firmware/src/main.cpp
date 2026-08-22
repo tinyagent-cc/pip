@@ -49,6 +49,7 @@ int main() {
 #endif
     static pip::RealBody body;
     bool online = false, server_started = false;
+    uint32_t next_server_try_ms = 0;   // a failed start retries every 5 s, not every frame
     pip::net::wifi_start_async(PIP_WIFI_SSID, PIP_WIFI_PASS, to_ms_since_boot(get_absolute_time()));
     uint32_t next_sense_ms = 0;
     absolute_time_t next = get_absolute_time();
@@ -57,7 +58,8 @@ int main() {
         uint32_t now_ms = to_ms_since_boot(get_absolute_time());
         uint32_t dt = now_ms - last_ms; last_ms = now_ms;
         online = pip::net::wifi_poll(now_ms) == pip::net::WifiState::Up;
-        if (online && !server_started) {
+        if (online && !server_started && (int32_t)(now_ms - next_server_try_ms) >= 0) {
+            next_server_try_ms = now_ms + 5000;
             cyw43_arch_lwip_begin();
             server_started = pip::net::http_server_start(PIP_HTTP_PORT, body);
             cyw43_arch_lwip_end();

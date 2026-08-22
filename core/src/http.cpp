@@ -81,7 +81,7 @@ size_t build_response(char* out, size_t cap, int status, const char* body, const
 Feed feed(char* buf, size_t cap, size_t& len, const char* chunk, size_t n,
           Body& body, char* resp, size_t rcap, size_t& rlen) {
     rlen = 0;
-    if (cap == 0) return Feed::NeedMore;
+    if (len >= cap) return Feed::NeedMore;   // also covers cap == 0; a full buffer cannot take more
     size_t room = cap - 1 - len;
     size_t take = n < room ? n : room;
     if (take) std::memcpy(buf + len, chunk, take);
