@@ -2,6 +2,13 @@
 #include <cstdio>
 #include "pico/stdlib.h"
 #include "pico/audio_i2s.h"
+#include "pins.hpp"
+
+// pico_audio_i2s takes its pins as compile definitions, so CMake has to carry the numbers.
+// pins.hpp stays the single source: drift between the two stops the build right here.
+static_assert(PICO_AUDIO_I2S_DATA_PIN == (int)pip::pins::I2S_DIN, "I2S data pin drifted from pins.hpp");
+static_assert(PICO_AUDIO_I2S_CLOCK_PIN_BASE == (int)pip::pins::I2S_BCLK, "I2S clock base drifted from pins.hpp");
+static_assert(PICO_AUDIO_I2S_CLOCK_PIN_BASE + 1 == (int)pip::pins::I2S_LRCLK, "LRCLK is BCLK+1 in hardware");
 
 // Two seconds of 440 Hz, then two of silence, forever. Stereo S16 at 44.1 kHz, the same
 // shape as pico-playground's sine_wave example. If this sings on RP2350, Plan 3b is a go.
