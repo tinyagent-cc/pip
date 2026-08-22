@@ -6,6 +6,7 @@
 #include "body.hpp"
 #include "net/wifi.hpp"
 #include "net/http_server.hpp"
+#include "net/event_post.hpp"
 #include "pip/face.hpp"
 #include "pip/events.hpp"
 #include "drivers/button.hpp"
@@ -79,6 +80,12 @@ int main() {
             if (ev == pip::Event::ButtonPress) rgb.set(0, 40, 0);
             if (ev == pip::Event::ButtonRelease) rgb.set(0, 0, 0);
 #endif
+            if (online) {
+                char js[64]; pip::event_json(pip::event_name(ev), js, sizeof js);
+                cyw43_arch_lwip_begin();
+                pip::net::post_event(PIP_BRAIN_HOST, PIP_BRAIN_PORT, js);
+                cyw43_arch_lwip_end();
+            }
         }
         pip::Rect dirty = face.tick(dt, g_fb);
 #ifndef PIP_LITE

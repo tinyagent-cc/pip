@@ -15,7 +15,7 @@ option(PIP_AUDIO_SMOKE "Also build the I2S tone smoke (needs PICO_EXTRAS_PATH)" 
 set(PIP_CORE ${CMAKE_CURRENT_SOURCE_DIR}/../core)
 file(GLOB PIP_CORE_SRC ${PIP_CORE}/src/*.cpp)
 
-add_executable(pip src/main.cpp src/net/wifi.cpp src/net/http_server.cpp ${PIP_CORE_SRC})
+add_executable(pip src/main.cpp src/net/wifi.cpp src/net/http_server.cpp src/net/event_post.cpp ${PIP_CORE_SRC})
 target_include_directories(pip PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src ${PIP_CORE}/include)
 target_link_libraries(pip pico_stdlib pico_cyw43_arch_lwip_threadsafe_background hardware_adc)
 pico_set_printf_implementation(pip pico)
