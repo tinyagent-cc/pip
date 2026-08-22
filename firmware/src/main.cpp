@@ -40,7 +40,11 @@ int main() {
     bool online = pip::net::wifi_connect(PIP_WIFI_SSID, PIP_WIFI_PASS, 20000, ip);
     printf("pip: wifi %s ip=%s\n", online ? "up" : "down", ip);
     static pip::RealBody body;
-    if (online) { cyw43_arch_lwip_begin(); pip::net::http_server_start(PIP_HTTP_PORT, body); cyw43_arch_lwip_end(); }
+    if (online) {
+        cyw43_arch_lwip_begin();
+        if (!pip::net::http_server_start(PIP_HTTP_PORT, body)) printf("pip: http server failed to start\n");
+        cyw43_arch_lwip_end();
+    }
     uint32_t next_sense_ms = 0;
     absolute_time_t next = get_absolute_time();
     uint32_t last_ms = to_ms_since_boot(get_absolute_time());
