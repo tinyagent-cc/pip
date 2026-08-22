@@ -1,8 +1,110 @@
+#include <cstdio>
 #include <cstring>
+#include <string>
 #include "check.h"
 #include "pip/http.hpp"
+#include "pip/protocol.hpp"
 using namespace pip::http;
+
+// Minimal Body for the feed() tests: records what the router asked for.
+struct FeedBody : pip::Body {
+    int n_express = 0, n_chirp = 0, n_led = 0;
+    void express(pip::Emotion) override { ++n_express; }
+    void chirp(pip::Chirp) override { ++n_chirp; }
+    void led(uint8_t, uint8_t, uint8_t) override { ++n_led; }
+    pip::Senses senses() override { return pip::Senses{12.5f, 21.0f, false}; }
+};
+
+static void feed_tests() {
+    // One chunk, one complete request, routed and answered.
+    {
+        FeedBody body; char buf[1536], resp[512]; size_t len = 0, rlen = 0;
+        const char* req = "POST /express HTTP/1.0\r\nContent-Length: 19\r\n\r\n{\"emotion\":\"happy\"}";
+        CHECK(feed(buf, sizeof buf, len, req, std::strlen(req), body, resp, sizeof resp, rlen) == Feed::Responded);
+        CHECK_EQ(body.n_express, 1);
+        std::string s(resp, rlen);
+        CHECK(s.rfind("HTTP/1.0 200", 0) == 0);
+        CHECK(s.find("X-Pip-Protocol: 0\r\n") != std::string::npos);
+        CHECK(s.find("Connection: close\r\n\r\n{\"ok\":true}") != std::string::npos);
+    }
+    // Split on the header/body boundary: the first chunk cannot be answered.
+    {
+        FeedBody body; char buf[1536], resp[512]; size_t len = 0, rlen = 0;
+        const char* head = "POST /express HTTP/1.0\r\nContent-Length: 19\r\n\r\n";
+        const char* tail = "{\"emotion\":\"happy\"}";
+        CHECK(feed(buf, sizeof buf, len, head, std::strlen(head), body, resp, sizeof resp, rlen) == Feed::NeedMore);
+        CHECK_EQ(rlen, (size_t)0); CHECK_EQ(body.n_express, 0);
+        CHECK(feed(buf, sizeof buf, len, tail, std::strlen(tail), body, resp, sizeof resp, rlen) == Feed::Responded);
+        CHECK_EQ(body.n_express, 1);
+        CHECK(std::string(resp, rlen).rfind("HTTP/1.0 200", 0) == 0);
+    }
+    // Split mid-header, the nastier boundary: the terminator itself straddles the chunks.
+    {
+        FeedBody body; char buf[1536], resp[512]; size_t len = 0, rlen = 0;
+        const char* a = "GET /senses HTTP/1.1\r\nHost: p";
+        const char* b = "ip\r\n\r\n";
+        CHECK(feed(buf, sizeof buf, len, a, std::strlen(a), body, resp, sizeof resp, rlen) == Feed::NeedMore);
+        CHECK(feed(buf, sizeof buf, len, b, std::strlen(b), body, resp, sizeof resp, rlen) == Feed::Responded);
+        std::string s(resp, rlen);
+        CHECK(s.rfind("HTTP/1.0 200", 0) == 0);
+        CHECK(s.find("\"light_lux\"") != std::string::npos);
+    }
+    // A GET with no body at all is Complete on the first chunk.
+    {
+        FeedBody body; char buf[1536], resp[512]; size_t len = 0, rlen = 0;
+        const char* req = "GET /senses HTTP/1.0\r\n\r\n";
+        CHECK(feed(buf, sizeof buf, len, req, std::strlen(req), body, resp, sizeof resp, rlen) == Feed::Responded);
+        CHECK(std::string(resp, rlen).find("\"temp_c\"") != std::string::npos);
+    }
+    // A zero-length chunk changes nothing and asks for more.
+    {
+        FeedBody body; char buf[1536], resp[512]; size_t len = 0, rlen = 0;
+        CHECK(feed(buf, sizeof buf, len, "", 0, body, resp, sizeof resp, rlen) == Feed::NeedMore);
+        CHECK_EQ(len, (size_t)0); CHECK_EQ(rlen, (size_t)0);
+        const char* a = "GET /senses HTTP/1.1\r\n";
+        CHECK(feed(buf, sizeof buf, len, a, std::strlen(a), body, resp, sizeof resp, rlen) == Feed::NeedMore);
+        CHECK_EQ(len, std::strlen(a));
+        CHECK(feed(buf, sizeof buf, len, "", 0, body, resp, sizeof resp, rlen) == Feed::NeedMore);
+        CHECK_EQ(len, std::strlen(a));
+    }
+    // The buffer fills with no header terminator in sight: bounded 400, not an endless wait.
+    {
+        FeedBody body; char buf[128], resp[512]; size_t len = 0, rlen = 0;
+        static char junk[64]; std::memset(junk, 'A', sizeof junk);
+        Feed f = feed(buf, sizeof buf, len, junk, sizeof junk, body, resp, sizeof resp, rlen);
+        CHECK(f == Feed::NeedMore);
+        f = feed(buf, sizeof buf, len, junk, sizeof junk, body, resp, sizeof resp, rlen);
+        CHECK(f == Feed::Bad);
+        std::string s(resp, rlen);
+        CHECK(s.rfind("HTTP/1.0 400", 0) == 0);
+        CHECK(s.find("X-Pip-Protocol: 0\r\n") != std::string::npos);
+        CHECK(rlen < sizeof resp);
+        // A full buffer stays Bad rather than silently swallowing the overflow bytes.
+        CHECK(feed(buf, sizeof buf, len, junk, sizeof junk, body, resp, sizeof resp, rlen) == Feed::Bad);
+    }
+    // A body bigger than the buffer is rejected, and the endpoint is never called.
+    {
+        FeedBody body; char buf[128], resp[512]; size_t len = 0, rlen = 0;
+        const char* head = "POST /express HTTP/1.0\r\nContent-Length: 300\r\n\r\n";
+        Feed f = feed(buf, sizeof buf, len, head, std::strlen(head), body, resp, sizeof resp, rlen);
+        CHECK(f == Feed::NeedMore);
+        static char blob[300]; std::memset(blob, 'x', sizeof blob);
+        f = feed(buf, sizeof buf, len, blob, sizeof blob, body, resp, sizeof resp, rlen);
+        CHECK(f == Feed::Bad);
+        CHECK_EQ(body.n_express, 0);
+        CHECK(std::string(resp, rlen).rfind("HTTP/1.0 400", 0) == 0);
+    }
+    // Content-Length over the parser's own 1024 ceiling is Bad on sight, whatever the buffer size.
+    {
+        FeedBody body; char buf[1536], resp[512]; size_t len = 0, rlen = 0;
+        const char* req = "POST /express HTTP/1.0\r\nContent-Length: 2000\r\n\r\n";
+        CHECK(feed(buf, sizeof buf, len, req, std::strlen(req), body, resp, sizeof resp, rlen) == Feed::Bad);
+        CHECK(std::string(resp, rlen).rfind("HTTP/1.0 400", 0) == 0);
+    }
+}
+
 static void run() {
+    feed_tests();
     Request r{};
     const char* get = "GET /senses HTTP/1.1\r\nHost: pip\r\n\r\n";
     CHECK(parse_request(get, std::strlen(get), r) == Parse::Complete);

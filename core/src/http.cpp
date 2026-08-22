@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <strings.h>
+#include "pip/protocol.hpp"
 namespace pip::http {
 namespace {
 const char* find(const char* hay, size_t len, const char* needle) {
@@ -76,5 +77,27 @@ size_t build_response(char* out, size_t cap, int status, const char* body, const
         "HTTP/1.0 %d %s\r\nContent-Type: application/json\r\nContent-Length: %u\r\nX-Pip-Protocol: 0\r\n%s%sConnection: close\r\n\r\n%s",
         status, reason(status), blen, extra ? extra : "", extra ? "\r\n" : "", body);
     return (n < 0 || (size_t)n >= cap) ? 0 : (size_t)n;
+}
+Feed feed(char* buf, size_t cap, size_t& len, const char* chunk, size_t n,
+          Body& body, char* resp, size_t rcap, size_t& rlen) {
+    rlen = 0;
+    if (cap == 0) return Feed::NeedMore;
+    size_t room = cap - 1 - len;
+    size_t take = n < room ? n : room;
+    if (take) std::memcpy(buf + len, chunk, take);
+    len += take;
+    Request req{};
+    Parse st = parse_request(buf, len, req);
+    // The buffer is full and the header block still has no terminator: no later byte can
+    // rescue this request, so answer now instead of holding the connection open forever.
+    if (st == Parse::Incomplete && take == room) st = Parse::Bad;
+    if (st == Parse::Incomplete) return Feed::NeedMore;
+    if (st == Parse::Bad) {
+        rlen = build_response(resp, rcap, 400, "{\"error\":\"bad request\"}", nullptr);
+        return Feed::Bad;
+    }
+    rlen = handle_request(req, body, resp, rcap);
+    if (rlen == 0) rlen = build_response(resp, rcap, 400, "{\"error\":\"response too large\"}", nullptr);
+    return Feed::Responded;
 }
 }
