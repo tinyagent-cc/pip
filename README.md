@@ -27,7 +27,16 @@ lands after it. Design spec: [tiny_agent](https://github.com/tinyagent-cc/tiny_a
 | RGB LED (4-pin) | mood | R GP10, G GP11, B GP12 through 220 ohm, common to GND |
 | MAX98357A + speaker | chirps (next plan) | BCLK GP26, LRC GP27, DIN GP28, VIN 3V3, GND |
 
-`firmware/pins.hpp` is the source of truth for this table.
+`firmware/pins.hpp` is the source of truth for this table, and for the wiring diagram:
+
+![Pip breadboard wiring](hardware/pip-wiring.png)
+
+`hardware/pip-wiring.yml` is the [WireViz](https://github.com/wireviz/WireViz) source
+(wire colours, resistor values, physical Pico pin numbers); `pip-wiring.svg` and
+`pip-wiring.bom.tsv` are rendered from it. `scripts/check_wiring.py` runs in CI and fails
+when the diagram and `pins.hpp` disagree. Regenerate after a pin change with
+`pip install wireviz` (needs Graphviz) and `wireviz hardware/pip-wiring.yml`.
+`PIP_LITE` needs no wiring: a bare Pico 2 W on USB.
 
 If the eyes come up mirrored or upside down, that is MADCTL, not the wiring.
 `firmware/src/drivers/ili9341.cpp` sends `0x36 0x28` (MV|BGR, landscape), which suits the

@@ -1,0 +1,20 @@
+Id	Description	Qty	Unit	Designators
+1	Connector, 4 ohm 3 W speaker, 2 pins	1		Speaker
+2	Connector, ILI9341 240x320 SPI TFT breakout, 9-pin header, common red board, 9 pins	1		ILI9341
+3	Connector, MAX98357A I2S 3 W class-D amp breakout, chirps, next plan, 9 pins	1		MAX98357A
+4	Connector, RGB LED, 4-pin, common cathode, longest leg is the common, 4 pins	1		LED
+5	Connector, Raspberry Pi Pico 2 W, 2 x 20 header, pins 1 to 40, 40 pins	1		Pico
+6	Connector, Resistor 220 ohm, 2 pins	3		R1, R2, R3
+7	Connector, Tactile push button, 2 pins	1		Button
+8	Connector, VEML7700 ambient light breakout, I2C address 0x10, 5 pins	1		VEML7700
+9	Wire, 0.5 mm², BK	0.2	m	W_SPK
+10	Wire, 0.5 mm², RD	0.2	m	W_SPK
+11	Wire, Dupont jumper, female-female, 0.25 mm², BK	0.75	m	W_ALS, W_AMP, W_BTN, W_LCD, W_LED_GPIO
+12	Wire, Dupont jumper, female-female, 0.25 mm², BU	0.6	m	W_AMP, W_LCD, W_LED_GPIO, W_LED_R
+13	Wire, Dupont jumper, female-female, 0.25 mm², GN	0.6	m	W_ALS, W_LCD, W_LED_GPIO, W_LED_R
+14	Wire, Dupont jumper, female-female, 0.25 mm², GY	0.15	m	W_BTN
+15	Wire, Dupont jumper, female-female, 0.25 mm², OG	0.15	m	W_LCD
+16	Wire, Dupont jumper, female-female, 0.25 mm², RD	0.75	m	W_ALS, W_AMP, W_LCD, W_LED_GPIO, W_LED_R
+17	Wire, Dupont jumper, female-female, 0.25 mm², VT	0.3	m	W_AMP, W_LCD
+18	Wire, Dupont jumper, female-female, 0.25 mm², WH	0.3	m	W_AMP, W_LCD
+19	Wire, Dupont jumper, female-female, 0.25 mm², YE	0.3	m	W_ALS, W_LCD
