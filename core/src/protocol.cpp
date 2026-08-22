@@ -1,4 +1,5 @@
 #include "pip/protocol.hpp"
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include "pip/json_mini.hpp"
@@ -51,8 +52,15 @@ size_t handle_request(const http::Request& req, Body& body, char* out, size_t ca
     if (std::strcmp(req.path, "/senses") == 0) {
         if (!is_get) return respond(out, cap, 405, "{\"error\":\"use GET\"}");
         Senses s = body.senses();
+        // A sensor glitch (NaN/Inf) or an out-of-physical-range reading must not produce
+        // malformed or misleading JSON; sanitize and clamp before formatting.
+        float lux = std::isfinite(s.light_lux) ? s.light_lux : -1.0f;
+        float t = std::isfinite(s.temp_c) ? s.temp_c : 0.0f;
+        if (lux < -1.0f) lux = -1.0f; else if (lux > 200000.0f) lux = 200000.0f;
+        if (t < -100.0f) t = -100.0f; else if (t > 200.0f) t = 200.0f;
         char js[96];
-        std::snprintf(js, sizeof js, "{\"light_lux\":%.1f,\"temp_c\":%.1f,\"button\":\"%s\"}", (double)s.light_lux, (double)s.temp_c, s.button_down ? "down" : "up");
+        int n = std::snprintf(js, sizeof js, "{\"light_lux\":%.1f,\"temp_c\":%.1f,\"button\":\"%s\"}", (double)lux, (double)t, s.button_down ? "down" : "up");
+        if (n < 0 || (size_t)n >= sizeof js) return respond(out, cap, 500, "{\"error\":\"senses too large\"}");
         return respond(out, cap, 200, js);
     }
     return respond(out, cap, 404, "{\"error\":\"not found\"}");

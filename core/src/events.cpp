@@ -21,6 +21,7 @@ Event ButtonFsm::tick(uint32_t now, bool pressed) {
     return Event::None;
 }
 Event LightFsm::tick(uint32_t now, float lux) {
+    if (lux != lux) return Event::None; // NaN: no reading, leave state (and any in-progress timer) untouched
     if (!low_state_) {
         if (lux < low_) {
             if (!timing_) { timing_ = true; below_since_ = now; }

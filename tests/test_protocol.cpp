@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstring>
 #include <string>
 #include "check.h"
@@ -6,10 +7,11 @@
 using namespace pip;
 struct Fake : Body {
     Emotion e = Emotion::Idle; Chirp c = Chirp::Rise; int r = -1, g = -1, b = -1; int n_express = 0, n_chirp = 0, n_led = 0;
+    Senses s{123.4f, 25.5f, true};
     void express(Emotion x) override { e = x; ++n_express; }
     void chirp(Chirp x) override { c = x; ++n_chirp; }
     void led(uint8_t rr, uint8_t gg, uint8_t bb) override { r = rr; g = gg; b = bb; ++n_led; }
-    Senses senses() override { return Senses{123.4f, 25.5f, true}; }
+    Senses senses() override { return s; }
 };
 static std::string call(Fake& f, const char* raw) {
     http::Request req{}; CHECK(http::parse_request(raw, std::strlen(raw), req) == http::Parse::Complete);
@@ -42,5 +44,21 @@ static void run() {
     CHECK_STREQ(ev, "{\"event\":\"button.press\"}");
     CHECK_STREQ(emotion_name(Emotion::Wink), "wink"); CHECK_STREQ(chirp_name(Chirp::Purr), "purr");
     Emotion e; CHECK(emotion_from("sleepy", e)); CHECK(e == Emotion::Sleepy); CHECK(!emotion_from("", e));
+
+    // Sensor glitch: NaN lux must not produce malformed JSON, and must not leak into the
+    // response as "nan" -- sanitized to -1.0 (an out-of-range sentinel, not a fabricated reading).
+    f.s = Senses{NAN, 25.5f, true};
+    r = call(f, "GET /senses HTTP/1.0\r\n\r\n");
+    CHECK(r.rfind("HTTP/1.0 200", 0) == 0);
+    CHECK(r.find("\"light_lux\":-1.0") != std::string::npos);
+
+    // Out-of-physical-range readings clamp instead of overflowing the format buffer.
+    f.s = Senses{3.4e38f, -3.4e38f, true};
+    r = call(f, "GET /senses HTTP/1.0\r\n\r\n");
+    CHECK(r.rfind("HTTP/1.0 200", 0) == 0);
+    CHECK(r.find("\"light_lux\":200000.0,\"temp_c\":-100.0") != std::string::npos);
+    CHECK(r.size() > 0 && r.back() == '}');
+
+    CHECK_STREQ(http::reason(500), "Internal Server Error");
 }
 TEST_MAIN()
