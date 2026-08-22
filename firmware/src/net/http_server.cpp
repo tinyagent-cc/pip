@@ -1,6 +1,4 @@
 #include "net/http_server.hpp"
-#include <cstdio>
-#include <cstring>
 #include "lwip/tcp.h"
 #include "lwip/pbuf.h"
 #include "pip/http.hpp"
@@ -10,6 +8,8 @@ constexpr int kConns = 4;
 struct Conn { tcp_pcb* pcb = nullptr; char buf[1536]; size_t len = 0; bool used = false; uint8_t idle = 0; };
 Conn g_conns[kConns];
 Body* g_body = nullptr;
+char g_chunk[1536];                // one segment staged out of its pbuf for http::feed
+char g_resp[512];                  // one response at a time: callbacks never overlap
 unsigned g_write_fail_count = 0;   // bumped on tcp_write failure; no printf in a callback
 
 // Returns true if the pcb was aborted (caller must then return ERR_ABRT to lwIP).
@@ -24,33 +24,39 @@ bool conn_close(Conn* c) {
     return aborted;
 }
 void on_err(void* arg, err_t) { Conn* c = static_cast<Conn*>(arg); if (c) { c->pcb = nullptr; (void)conn_close(c); } }
+// Reap an idle connection. Same order as conn_close: clear the callbacks first, so the
+// tcp_abort below cannot re-enter on_err from inside this call.
 err_t on_poll(void* arg, tcp_pcb*) {
     Conn* c = static_cast<Conn*>(arg);
     if (!c) return ERR_OK;
     if (++c->idle < 10) return ERR_OK;          // tcp_poll interval 2 = ~1 s; reap after ~10 s idle
-    tcp_abort(c->pcb); c->pcb = nullptr; conn_close(c);
+    if (c->pcb) {
+        tcp_arg(c->pcb, nullptr); tcp_recv(c->pcb, nullptr); tcp_err(c->pcb, nullptr);
+        tcp_sent(c->pcb, nullptr); tcp_poll(c->pcb, nullptr, 0);
+        tcp_abort(c->pcb);
+    }
+    c->pcb = nullptr; c->len = 0; c->used = false; c->idle = 0;
     return ERR_ABRT;                            // mandatory after tcp_abort
 }
 err_t on_recv(void* arg, tcp_pcb* pcb, pbuf* p, err_t) {
     Conn* c = static_cast<Conn*>(arg);
+    if (!c) { if (p) { tcp_recved(pcb, p->tot_len); pbuf_free(p); } return ERR_OK; }
     if (!p) { return conn_close(c) ? ERR_ABRT : ERR_OK; }
-    size_t room = sizeof c->buf - 1 - c->len;
-    size_t take = p->tot_len < room ? p->tot_len : room;
-    pbuf_copy_partial(p, c->buf + c->len, (u16_t)take, 0);
-    c->len += take;
-    tcp_recved(pcb, p->tot_len);
+    // Stage the segment, then let core decide. A segment past the staging buffer is
+    // truncated here, which http::feed sees as a full buffer and answers 400: the same
+    // outcome the connection buffer would have produced on its own.
+    size_t n = p->tot_len < sizeof g_chunk ? p->tot_len : sizeof g_chunk;
+    pbuf_copy_partial(p, g_chunk, (u16_t)n, 0);
+    tcp_recved(pcb, p->tot_len);   // the whole segment, not the copied part: keeps lwIP on the FIN path
     pbuf_free(p);
     c->idle = 0;
-    http::Request req{};
-    http::Parse st = http::parse_request(c->buf, c->len, req);
-    if (st == http::Parse::Incomplete && take == room) st = http::Parse::Bad;   // buffer full, give up
-    if (st == http::Parse::Incomplete) return ERR_OK;
-    static char resp[512];
-    size_t n = (st == http::Parse::Bad) ? http::build_response(resp, sizeof resp, 400, "{\"error\":\"bad request\"}", nullptr)
-                                        : handle_request(req, *g_body, resp, sizeof resp);
-    if (n == 0) n = http::build_response(resp, sizeof resp, 400, "{\"error\":\"response too large\"}", nullptr);
-    if (tcp_write(pcb, resp, (u16_t)n, TCP_WRITE_FLAG_COPY) == ERR_OK) tcp_output(pcb);
-    else ++g_write_fail_count;
+    size_t rlen = 0;
+    http::Feed f = http::feed(c->buf, sizeof c->buf, c->len, g_chunk, n, *g_body, g_resp, sizeof g_resp, rlen);
+    if (f == http::Feed::NeedMore) return ERR_OK;
+    if (rlen) {
+        if (tcp_write(pcb, g_resp, (u16_t)rlen, TCP_WRITE_FLAG_COPY) == ERR_OK) tcp_output(pcb);
+        else ++g_write_fail_count;
+    }
     return conn_close(c) ? ERR_ABRT : ERR_OK;   // close after write: lwIP flushes queued data before FIN
 }
 err_t on_accept(void*, tcp_pcb* newpcb, err_t err) {
@@ -71,7 +77,6 @@ bool http_server_start(uint16_t port, Body& body) {
     tcp_pcb* lpcb = tcp_listen_with_backlog(pcb, 4);
     if (!lpcb) { tcp_close(pcb); return false; }
     tcp_accept(lpcb, on_accept);
-    printf("pip: http server on :%u\n", port);
-    return true;
+    return true;   // the caller holds the lwIP lock, so it does the logging
 }
 }
