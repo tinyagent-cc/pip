@@ -20,4 +20,5 @@ private:
     std::atomic<float> lux_{-1.0f}, temp_{0.0f};
     std::atomic<bool> button_{false};
 };
+static_assert(std::atomic<float>::is_always_lock_free && std::atomic<uint32_t>::is_always_lock_free, "mailbox must be lock-free");
 }
