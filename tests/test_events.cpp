@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstring>
 #include "check.h"
 #include "pip/events.hpp"
@@ -34,5 +35,12 @@ static void run() {
     CHECK(l.tick(58000, 15.0f) == Event::None);      // between thresholds: hysteresis holds
     CHECK(l.tick(59000, 25.0f) == Event::LightHigh);
     CHECK(l.tick(60000, 25.0f) == Event::None);
+
+    // A NaN reading (sensor glitch) must be ignored, not treated as "not low": it must
+    // neither reset nor advance an in-progress sustain timer.
+    LightFsm l2(10.0f, 20.0f, 30000);
+    CHECK(l2.tick(1000, 5.0f) == Event::None);       // starts timing
+    CHECK(l2.tick(10000, NAN) == Event::None);       // ignored, timer untouched
+    CHECK(l2.tick(31000, 5.0f) == Event::LightLow);  // 30s after 1000, timer not reset by NaN
 }
 TEST_MAIN()
