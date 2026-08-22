@@ -31,7 +31,8 @@ lands after it. Design spec: [tiny_agent](https://github.com/tinyagent-cc/tiny_a
 
 The hookup, pin by pin. Pico 2 W seen from the top with the USB at the top, pin 1 marked;
 each breakout as a box with the pins its header prints; wires that cross without a dot
-are not connected:
+are not connected. Display pins not drawn (SDO and the touch row T_CLK, T_CS, T_DIN, T_DO,
+T_IRQ) stay open; v0 has no touch, the button is the only input:
 
 ![Pip hookup](hardware/pip-pictorial.png)
 
