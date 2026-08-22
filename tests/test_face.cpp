@@ -51,11 +51,25 @@ static void run() {
     CHECK(face.current().left.lid_bottom_pct == shape_for(Emotion::Happy).left.lid_bottom_pct);
     dump_ppm("face_happy.ppm");
 
-    face.set_emotion(Emotion::Sleepy); settle(face); dump_ppm("face_sleepy.ppm");
+    face.set_emotion(Emotion::Sleepy); settle(face);
+    CHECK(face.current().left.lid_top_pct == shape_for(Emotion::Sleepy).left.lid_top_pct);
+    CHECK(face.current().right.ry == shape_for(Emotion::Sleepy).right.ry);
+    dump_ppm("face_sleepy.ppm");
     face.set_emotion(Emotion::Thinking); settle(face);
     CHECK(face.current().left.pupil_dx == shape_for(Emotion::Thinking).left.pupil_dx);
     dump_ppm("face_thinking.ppm");
-    face.set_emotion(Emotion::Alert); settle(face); dump_ppm("face_alert.ppm");
+    face.set_emotion(Emotion::Alert); settle(face);
+    CHECK(face.current().left.ry == shape_for(Emotion::Alert).left.ry);
+    CHECK(face.current().right.pupil_r == shape_for(Emotion::Alert).right.pupil_r);
+    dump_ppm("face_alert.ppm");
+
+    // rect_union's two early returns: an empty operand contributes nothing, either side.
+    Rect some{10, 20, 30, 40}, none{0, 0, 0, 0}, flat{5, 5, 12, 0};
+    Rect u = rect_union(none, some);
+    CHECK_EQ(u.x, some.x); CHECK_EQ(u.y, some.y); CHECK_EQ(u.w, some.w); CHECK_EQ(u.h, some.h);
+    u = rect_union(some, flat);
+    CHECK_EQ(u.x, some.x); CHECK_EQ(u.y, some.y); CHECK_EQ(u.w, some.w); CHECK_EQ(u.h, some.h);
+    CHECK(rect_union(none, flat).empty());
 
     // Blink: at idle, advance past the first blink time and catch lids shut, then open again.
     Face f2; f2.tick(16, fb); settle(f2);
