@@ -1,6 +1,5 @@
 #include "net/wifi.hpp"
 #include <cstdio>
-#include <cstring>
 #include "pico/cyw43_arch.h"
 #include "lwip/netif.h"
 #include "lwip/ip4_addr.h"
@@ -14,7 +13,6 @@ const char* g_ssid = nullptr;
 const char* g_pass = nullptr;
 WifiState g_state = WifiState::Idle;
 uint32_t g_next_poll_ms = 0, g_retry_at_ms = 0, g_join_deadline_ms = 0;
-char g_ip[16] = "0.0.0.0";
 
 void start_connect(uint32_t now_ms) {
     cyw43_arch_lwip_begin();
@@ -31,7 +29,6 @@ void start_connect(uint32_t now_ms) {
 }
 void go_down(uint32_t now_ms, int status) {
     printf("pip: wifi down status=%d\n", status);
-    std::strcpy(g_ip, "0.0.0.0");
     g_state = WifiState::Down;
     g_retry_at_ms = now_ms + kRetryMs;
 }
@@ -59,9 +56,8 @@ WifiState wifi_poll(uint32_t now_ms) {
 
     if (status == CYW43_LINK_UP) {
         if (g_state != WifiState::Up) {
-            std::memcpy(g_ip, ip, sizeof g_ip);
             g_state = WifiState::Up;
-            printf("pip: wifi up ip=%s\n", g_ip);
+            printf("pip: wifi up ip=%s\n", ip);
         }
         return g_state;
     }
@@ -75,5 +71,4 @@ WifiState wifi_poll(uint32_t now_ms) {
     if ((int32_t)(now_ms - g_retry_at_ms) >= 0) start_connect(now_ms);
     return g_state;
 }
-const char* wifi_ip() { return g_ip; }
 }
