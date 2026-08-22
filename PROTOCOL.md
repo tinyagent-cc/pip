@@ -26,5 +26,5 @@ as facts, not commands.
 
 ## Versioning
 
-Breaking changes bump the version in this file and in the firmware's
-GET /senses response header `X-Pip-Protocol: 0`.
+Every response the body sends carries `X-Pip-Protocol: 0`, errors included.
+Breaking changes bump that header and the version in this file together.
