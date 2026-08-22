@@ -9,7 +9,7 @@ mood color.
 Status: body firmware v0 on `main`. It builds warning-free in three configs
 (full, `PIP_LITE`, and the I2S audio smoke) and flashes onto a Pico 2 W;
 serial confirms the face loop runs, WiFi retries a failed join about every
-11 s without stalling that loop, and the I2S tone loop runs on RP2350.
+10 s without stalling that loop, and the I2S tone loop runs on RP2350.
 Chirps in the main firmware are still a print
 stub, real audio is the next integration. Bench checks (the panel, the
 button and LED, the light reading, the curl cookbook, the event POSTs, the
