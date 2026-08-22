@@ -35,16 +35,21 @@ Parse parse_request(const char* buf, size_t len, Request& out) {
     // when it is complete; a request that never gets flagged Incomplete because the
     // buffer already holds the terminator must not slip past the same limit.
     if ((size_t)(hdr_end - buf) + 4 > 2048) return Parse::Bad;
-    const char* sp1 = static_cast<const char*>(std::memchr(buf, ' ', (size_t)(hdr_end - buf)));
+    // Tokenize the request line only, bounded by its own CRLF (first_eol). Searching
+    // sp1/sp2 all the way to hdr_end let a space in a later header (e.g. "Host: pip")
+    // stand in for the path/version separator and smeared header bytes into the path.
+    const char* first_eol = find(buf, (size_t)(hdr_end - buf) + 2, "\r\n");
+    if (!first_eol) return Parse::Bad;
+    const char* sp1 = static_cast<const char*>(std::memchr(buf, ' ', (size_t)(first_eol - buf)));
     if (!sp1) return Parse::Bad;
-    const char* sp2 = static_cast<const char*>(std::memchr(sp1 + 1, ' ', (size_t)(hdr_end - sp1 - 1)));
+    const char* sp2 = static_cast<const char*>(std::memchr(sp1 + 1, ' ', (size_t)(first_eol - sp1 - 1)));
     if (!sp2) return Parse::Bad;
+    if (sp2 + 1 >= first_eol) return Parse::Bad; // no version token after the path
     size_t ml = (size_t)(sp1 - buf), pl = (size_t)(sp2 - sp1 - 1);
     if (ml == 0 || ml >= sizeof out.method || pl == 0 || pl >= sizeof out.path) return Parse::Bad;
     std::memcpy(out.method, buf, ml); out.method[ml] = '\0';
     std::memcpy(out.path, sp1 + 1, pl); out.path[pl] = '\0';
-    const char* first_eol = find(buf, (size_t)(hdr_end - buf) + 2, "\r\n");
-    const char* hdrs = first_eol ? first_eol + 2 : hdr_end;
+    const char* hdrs = first_eol + 2;
     size_t clen = 0;
     if (const char* cl = header_value(hdrs, hdr_end, "Content-Length")) clen = std::strtoul(cl, nullptr, 10);
     if (clen > 1024) return Parse::Bad;

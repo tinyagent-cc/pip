@@ -20,6 +20,19 @@ static void run() {
     const char* huge = "POST /x HTTP/1.0\r\nContent-Length: 99999\r\n\r\n";
     CHECK(parse_request(huge, std::strlen(huge), r) == Parse::Bad);
 
+    // Regression: the request line must be tokenized within its own CRLF, not all
+    // the way to hdr_end. A missing version token (no space at all after the method)
+    // must not let a later header's space stand in for it.
+    const char* no_version = "GET /senses\r\nHost: pip\r\n\r\n";
+    CHECK(parse_request(no_version, std::strlen(no_version), r) == Parse::Bad);
+    // A header with spaces in its value must not disturb request-line tokenizing.
+    const char* spacey_header = "GET /senses HTTP/1.1\r\nX: a b c\r\n\r\n";
+    CHECK(parse_request(spacey_header, std::strlen(spacey_header), r) == Parse::Complete
+          && std::strcmp(r.path, "/senses") == 0);
+    // Trailing space with nothing after it is a missing version token too.
+    const char* no_version2 = "GET /senses \r\n\r\n";
+    CHECK(parse_request(no_version2, std::strlen(no_version2), r) == Parse::Bad);
+
     // Regression: a *complete* header block (terminator present) that is itself
     // over 2048 bytes must still be Bad, not Complete. The header comment says
     // "header blocks over 2048 are Bad" with no carve-out for the terminated case.
