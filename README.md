@@ -8,9 +8,9 @@ mood color.
 
 Status: body firmware v0 on `main`. It builds warning-free in three configs
 (full, `PIP_LITE`, and the I2S audio smoke) and flashes onto a Pico 2 W;
-serial confirms the face loop runs, WiFi logs its state correctly (a bad
-password fails cleanly and the loop keeps running offline), and the I2S
-tone loop runs on RP2350. Chirps in the main firmware are still a print
+serial confirms the face loop runs, WiFi retries a failed join about every
+11 s without stalling that loop, and the I2S tone loop runs on RP2350.
+Chirps in the main firmware are still a print
 stub, real audio is the next integration. Bench checks (the panel, the
 button and LED, the light reading, the curl cookbook, the event POSTs, the
 tone itself) are pending. The brain (tiny_agent + rete_cpp on a Pi Zero 2 W)
@@ -29,6 +29,11 @@ lands after it. Design spec: [tiny_agent](https://github.com/tinyagent-cc/tiny_a
 
 `firmware/pins.hpp` is the source of truth for this table.
 
+If the eyes come up mirrored or upside down, that is MADCTL, not the wiring.
+`firmware/src/drivers/ili9341.cpp` sends `0x36 0x28` (MV|BGR, landscape), which suits the
+common red breakout and has not been checked on any other panel. Try `0xE8`, the other
+landscape orientation, before pulling jumpers.
+
 `pip-lite`: `-DPIP_LITE=ON` builds the same firmware for a bare Pico 2 W:
 onboard LED answers `/led`, expressions and chirps print to serial, light
 reads as -1.
@@ -44,10 +49,18 @@ picotool load -f -x build-fw/pip.uf2             # board already running Pip
 ```
 
 Tested on the ARM GNU 14.2 toolchain with Pico SDK 2.1.1. Serial is USB CDC
-(`/dev/cu.usbmodem*`, 115200): `pip: express <name>` logs from the face loop,
-`pip: wifi up ip=<addr>` when it connects, or `pip: wifi connect failed
-rc=<n>` followed by `pip: wifi down ip=0.0.0.0` when it can't, and the loop
-keeps running offline either way.
+(`/dev/cu.usbmodem*`, 115200). The face loop logs `pip: express <name>`,
+`pip: chirp <name>`, `pip: led <r> <g> <b>` and `pip: event <name>`. WiFi is
+non-blocking, so the eyes are on the panel before the radio is touched and
+the loop never stalls on it:
+
+    pip: wifi up ip=<addr>            link came up, HTTP server starts next
+    pip: http server on :<port>
+    pip: wifi down status=<n>         -3 is bad password, -2 no such SSID, -1 join failed
+    pip: event dropped                a POST to the brain could not be queued
+
+After a `wifi down` it retries about every 10 s, and reconnects on its own if
+the AP comes back.
 
 Host-side tests for the platform-free core (`core/`), 6 binaries, all green:
 `cmake -S tests -B build-host && cmake --build build-host && ctest --test-dir
