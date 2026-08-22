@@ -5,6 +5,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - run: python3 scripts/check_wiring.py
       - run: cmake -S tests -B build-host
       - run: cmake --build build-host
       - run: ctest --test-dir build-host --output-on-failure
