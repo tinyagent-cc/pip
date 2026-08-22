@@ -1,9 +1,9 @@
 # Pip
 
 A desk companion with a face. Pico 2 W body, tiny_agent brain, rete_cpp
-reflexes. Press its button and it winks before you let go — that reaction is
+reflexes. Press its button and it winks before you let go: that reaction is
 a Rete rule firing in microseconds, zero tokens. Hold the button and it
-thinks — that one is an LLM agent choosing an expression, a chirp, and a
+thinks; that one is an LLM agent choosing an expression, a chirp, and a
 mood color.
 
 Status: scaffold. Firmware and brain land next; the design spec lives in
