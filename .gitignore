@@ -1,0 +1,4 @@
+build/
+config.h
+*.uf2
+.DS_Store
