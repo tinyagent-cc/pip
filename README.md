@@ -45,6 +45,17 @@ The same wiring as a harness with wire colours, lengths, and a parts list:
 needs Graphviz, then `wireviz hardware/pip-wiring.yml`). `scripts/check_wiring.py` runs in CI
 and fails when that file and `pins.hpp` disagree.
 
+Power: the Pico's USB cable is the only supply. 3V3 OUT (pin 36) covers the whole v0
+load; no breadboard power module, and never feed an external 5V or 3V3 rail into a Pico
+pin. Handy: jumper pin 36 to the breadboard's + rail and pin 38 to the − rail and take
+each breakout's VCC/GND from the rails. If the speaker clips when a tone plays, move the
+amp's VIN from 3V3 to VBUS (pin 40, USB 5V).
+
+The RGB LED is one 4-leg part (longest leg is COM); the drawing shows its three dies. The
+wiring assumes common cathode (`PIP_RGB_COMMON_ANODE 0`). Test: 3V3 through 220 ohm to
+the longest leg, one short leg to GND. Lights: common anode, so COM goes to 3V3 and
+`PIP_RGB_COMMON_ANODE 1`. Dark: common cathode, wire as drawn.
+
 `PIP_LITE` needs no wiring: a bare Pico 2 W on USB.
 
 If the eyes come up mirrored or upside down, that is MADCTL, not the wiring.
