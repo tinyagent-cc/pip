@@ -71,7 +71,9 @@ void Reflex::install_guardrails() {
             std::string id = std::get<std::string>(b.at("?c"));
             auto idx_wmes = engine.query(rete::Value(id), rete::Value(std::string("index")), std::nullopt);
             if (idx_wmes.empty()) return;
-            int idx = static_cast<int>(std::get<int64_t>(idx_wmes[0]->value));
+            auto* idx_p = std::get_if<int64_t>(&idx_wmes[0]->value);
+            if (!idx_p) { log_.note("night-led-cap: non-integer index fact for " + id); return; }
+            int idx = static_cast<int>(*idx_p);
 
             std::string origs, caps;
             for (const char* k : {"r", "g", "b"}) {
@@ -100,7 +102,9 @@ void Reflex::install_guardrails() {
             std::string id = std::get<std::string>(b.at("?c"));
             auto idx_wmes = engine.query(rete::Value(id), rete::Value(std::string("index")), std::nullopt);
             if (idx_wmes.empty()) return;
-            int idx = static_cast<int>(std::get<int64_t>(idx_wmes[0]->value));
+            auto* idx_p = std::get_if<int64_t>(&idx_wmes[0]->value);
+            if (!idx_p) { log_.note("chirp-rate: non-integer index fact for " + id); return; }
+            int idx = static_cast<int>(*idx_p);
 
             auto chirp_wmes = engine.query(std::nullopt, rete::Value(std::string("tool")), rete::Value(std::string("chirp")));
             int min_idx = idx;
