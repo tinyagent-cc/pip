@@ -90,7 +90,17 @@ void LinkBody::set_log(EventLog* log) { log_.store(log); }
 void LinkBody::reader_loop() {
     std::vector<uint8_t> buf(1024);
     wire::Decoder dec;
+    int64_t last_wake_ms = now_ms();           // first wake ping after a second of silence
     while (!stop_.load()) {
+        // Each side of the wire only talks once it has heard the other: the body
+        // sends its uplink while the link is alive, and commands here fall back to
+        // HTTP while it is not. Somebody has to speak first, and a brain that
+        // starts after the body's boot hello is the usual case. So: one ping a
+        // second straight down the wire until a frame comes back.
+        if (!alive() && now_ms() - last_wake_ms >= 1000) {
+            last_wake_ms = now_ms();
+            send_json(json{{"cmd", "ping"}});
+        }
         pollfd p{fd_, POLLIN, 0};
         int pr = ::poll(&p, 1, 200);
         if (pr <= 0) continue;                     // timeout, or EINTR: re-check stop_

@@ -53,6 +53,19 @@ TEST_CASE("an up event reaches the sink; the link is dead until a frame arrives"
     CHECK(body.stats().rx_frames == 1u);
 }
 
+TEST_CASE("a brain that hears nothing pings the wire once a second until it does") {
+    FakeLink link;
+    LinkBody body(link.take_brain_fd());
+    CHECK_FALSE(body.alive());
+    REQUIRE(link.wait_commands(1, 2500));
+    CHECK(link.commands()[0] == json{{"cmd", "ping"}});
+    link.send_json(json{{"senses", {{"light_lux", 1.0}}}});
+    REQUIRE(FakeLink::wait_for([&] { return body.alive(); }));
+    size_t n = link.commands().size();
+    std::this_thread::sleep_for(std::chrono::milliseconds(1300));
+    CHECK(link.commands().size() == n);      // alive: no more wake pings
+}
+
 TEST_CASE("a senses frame is cached and served without touching the wire") {
     FakeLink link;
     LinkBody body(link.take_brain_fd());
