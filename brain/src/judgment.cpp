@@ -74,45 +74,50 @@ std::vector<DynamicTool> Judgment::tools() {
 std::string Judgment::react(const std::string& trigger, const Context& ctx) {
     if (!enabled()) return "";
 
-    // Usage + latency logger: one log line per model round trip. Wraps the
-    // guardrail middleware, so the latency it records covers guardrail
-    // processing too, and the tool-call count it logs is the post-guardrail
-    // one the agent loop actually dispatches.
-    MiddlewareFn usage = [this, trigger](std::vector<Message>& msgs, Next next) -> LLMResponse {
-        auto t0 = std::chrono::steady_clock::now();
-        LLMResponse r = next(msgs);
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
-        int64_t pt = r.usage.is_object() ? r.usage.value("prompt_tokens", int64_t(-1)) : -1;
-        int64_t ct = r.usage.is_object() ? r.usage.value("completion_tokens", int64_t(-1)) : -1;
-        std::string what = r.message.has_tool_calls() ? "tool_calls=" + std::to_string(r.message.tool_calls.size()) : "text";
-        log_.llm(trigger, ms, pt, ct, what + " finish=" + r.finish_reason);
-        return r;
-    };
-
-    AgentConfig cfg;
-    cfg.name = "pip-judgment";
-    cfg.system_prompt = system_prompt();
-    cfg.tools = tools();
-    cfg.max_iterations = cfg_.max_iterations;
-    cfg.middlewares.push_back(usage);
-    cfg.middlewares.push_back(reflex_.guardrail_middleware());
-    if (!cfg_.llm2_url.empty()) {
-        // AnyChat holds an httplib::Client and is not copyable, so the
-        // fallback vector has to be built with push_back/move rather than a
-        // brace-init list (which would copy-construct from an
-        // std::initializer_list element).
-        std::vector<AnyChat> fallbacks;
-        fallbacks.push_back(init_chat_model("openai:" + cfg_.model,
-            LLMConfig{.base_url = cfg_.llm2_url, .timeout_seconds = cfg_.timeout_s}));
-        cfg.middlewares.push_back(middleware::model_fallback(std::move(fallbacks)));
-    }
-
-    auto agent = make_agent(
-        OpenAIChat{.model = cfg_.model, .api_key = "", .base_url = cfg_.llm_url,
-                   .temperature = cfg_.temperature, .max_tokens = cfg_.max_tokens, .timeout_seconds = cfg_.timeout_s},
-        cfg);
-
+    // Everything from here down -- config assembly, agent construction, and
+    // the run itself -- funnels into the catch below. DeepAgent's
+    // constructor can throw (e.g. max_iterations <= 0), and construction is
+    // driven by cfg_ values that are not validated on the way in, so react()
+    // must not let that escape as an unhandled exception.
     try {
+        // Usage + latency logger: one log line per model round trip. Wraps
+        // the guardrail middleware, so the latency it records covers
+        // guardrail processing too, and the tool-call count it logs is the
+        // post-guardrail one the agent loop actually dispatches.
+        MiddlewareFn usage = [this, trigger](std::vector<Message>& msgs, Next next) -> LLMResponse {
+            auto t0 = std::chrono::steady_clock::now();
+            LLMResponse r = next(msgs);
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+            int64_t pt = r.usage.is_object() ? r.usage.value("prompt_tokens", int64_t(-1)) : -1;
+            int64_t ct = r.usage.is_object() ? r.usage.value("completion_tokens", int64_t(-1)) : -1;
+            std::string what = r.message.has_tool_calls() ? "tool_calls=" + std::to_string(r.message.tool_calls.size()) : "text";
+            log_.llm(trigger, ms, pt, ct, what + " finish=" + r.finish_reason);
+            return r;
+        };
+
+        AgentConfig cfg;
+        cfg.name = "pip-judgment";
+        cfg.system_prompt = system_prompt();
+        cfg.tools = tools();
+        cfg.max_iterations = cfg_.max_iterations;
+        cfg.middlewares.push_back(usage);
+        cfg.middlewares.push_back(reflex_.guardrail_middleware());
+        if (!cfg_.llm2_url.empty()) {
+            // AnyChat holds an httplib::Client and is not copyable, so the
+            // fallback vector has to be built with push_back/move rather than
+            // a brace-init list (which would copy-construct from an
+            // std::initializer_list element).
+            std::vector<AnyChat> fallbacks;
+            fallbacks.push_back(init_chat_model("openai:" + cfg_.model,
+                LLMConfig{.base_url = cfg_.llm2_url, .timeout_seconds = cfg_.timeout_s}));
+            cfg.middlewares.push_back(middleware::model_fallback(std::move(fallbacks)));
+        }
+
+        auto agent = make_agent(
+            OpenAIChat{.model = cfg_.model, .api_key = "", .base_url = cfg_.llm_url,
+                       .temperature = cfg_.temperature, .max_tokens = cfg_.max_tokens, .timeout_seconds = cfg_.timeout_s},
+            cfg);
+
         return agent.run(user_prompt(ctx));
     } catch (const std::exception& e) {
         log_.note(std::string("llm failed: ") + e.what());

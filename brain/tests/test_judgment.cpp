@@ -19,11 +19,12 @@ TEST_CASE("hold: agent calls express through the body tool, usage and latency ar
     auto t = log.tail(10); bool tokens = false;
     for (auto& e : t) if (e["kind"] == "llm") { CHECK(e["prompt_tokens"].get<int>() > 0); tokens = true; }
     CHECK(tokens);
-    REQUIRE(llm.requests.size() == 2);
-    CHECK(llm.requests[0]["tools"].size() == 4);
-    std::string sys = llm.requests[0]["messages"][0]["content"];
+    auto reqs = llm.requests_snapshot();
+    REQUIRE(reqs.size() == 2);
+    CHECK(reqs[0]["tools"].size() == 4);
+    std::string sys = reqs[0]["messages"][0]["content"];
     CHECK(sys.find("Pip") != std::string::npos);
-    std::string user = llm.requests[0]["messages"][1]["content"];
+    std::string user = reqs[0]["messages"][1]["content"];
     CHECK(user.find("button.press") != std::string::npos);
     CHECK(user.find("27") != std::string::npos);
 }
@@ -40,5 +41,14 @@ TEST_CASE("disabled without a URL; unreachable server returns empty and logs") {
     CHECK_FALSE(off.enabled());
     Judgment dead({.llm_url = "http://127.0.0.1:9", .timeout_s = 1}, body, rx, log);
     CHECK(dead.react("button.hold", Context{}) == "");
+    CHECK(log.count(EventLog::Kind::Note) >= 1);
+}
+TEST_CASE("a config that makes DeepAgent's constructor throw is caught, not propagated") {
+    FakeLlm llm;
+    FakeBody body; Policy policy; EventLog log{50, nullptr}; Reflex rx{body, policy, log};
+    Judgment j({.llm_url = llm.url(), .max_iterations = 0}, body, rx, log);
+    std::string out;
+    CHECK_NOTHROW(out = j.react("button.hold", Context{}));
+    CHECK(out == "");
     CHECK(log.count(EventLog::Kind::Note) >= 1);
 }
