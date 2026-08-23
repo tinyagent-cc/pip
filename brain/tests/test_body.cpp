@@ -12,7 +12,7 @@ TEST_CASE("HttpBody speaks protocol v0 to a fake Pip") {
     CHECK(body.led(1, 2, 3));
     Senses s = body.senses();
     CHECK(s.ok); CHECK(s.light_lux == doctest::Approx(12.5)); CHECK(s.temp_c == doctest::Approx(28.0)); CHECK_FALSE(s.button_down);
-    CHECK(pip.calls == std::vector<std::string>{"express:wink", "chirp:rise", "led:1,2,3", "senses"});
+    CHECK(pip.snapshot() == std::vector<std::string>{"express:wink", "chirp:rise", "led:1,2,3", "senses"});
 }
 TEST_CASE("HttpBody reports 400 and unreachable as false") {
     FakePip pip;
@@ -21,4 +21,12 @@ TEST_CASE("HttpBody reports 400 and unreachable as false") {
     HttpBody dead("http://127.0.0.1:9", 200);
     CHECK_FALSE(dead.express("wink"));
     CHECK_FALSE(dead.senses().ok);
+}
+TEST_CASE("HttpBody::senses() is total: a wrong-typed field on a 200 reply yields ok=false, no throw") {
+    FakePip pip;
+    pip.senses_override_body = R"({"light_lux":"bright","temp_c":28.0,"button":"up"})";
+    HttpBody body(pip.url());
+    Senses s;
+    CHECK_NOTHROW(s = body.senses());
+    CHECK_FALSE(s.ok);
 }
