@@ -1,0 +1,11 @@
+{
+  "name": "pip-brain",
+  "version": "0.1.0",
+  "dependencies": [
+    "nlohmann-json",
+    { "name": "cpp-httplib", "features": ["openssl"] },
+    "doctest",
+    "libenvpp",
+    "json-schema-validator"
+  ]
+}
