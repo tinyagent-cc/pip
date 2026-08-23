@@ -23,6 +23,7 @@ pip_test(test_font)
 pip_test(test_draw)
 pip_test(test_link)
 pip_test(test_chirps)
+pip_test(test_audio_ring)
 
 # Visual QA, not a test: dumps PPM frames for eyeballing.
 add_executable(render_frames render_frames.cpp)
