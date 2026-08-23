@@ -43,9 +43,10 @@ sounds and senses, which is why the face loop never waits on the LAN.
    frame later.
 
 Measured at the brain with the body answering over HTTP: **757 ms**. Over the
-wire the same path is a rule match plus one UART frame, which is where the
-microseconds claim comes from. The bench has not timed that yet:
-`{{wire_reflex_us}}`.
+wire the same path is a rule match plus one UART frame: **114 µs** for the rule
+(105 to 165 µs across the 2026-08-23 acceptance run, `reflex` entries in
+`/log`), about 250 to 330 µs for the whole event. The face flips within the
+next frame, so the wink is on the panel in well under 50 ms.
 
 ### How a hold becomes an answer
 
@@ -63,8 +64,12 @@ microseconds claim comes from. The bench has not timed that yet:
    text.
 6. The HUD gets `judge_ms` and `mind`.
 
-Measured end to end on 2026-08-23 with the Jetson up: **9.8 s**, `judge_ms`
-9758, `mind` `J`. The three Jetson processes hold about 4.09 GB resident
+Measured end to end on 2026-08-23 with the Jetson up, over the wire: **8.8 s**
+from the hold to the answer text (8.6 to 8.9 s over five runs), spoken about
+9.0 s in; `judge_ms` 3.2 to 3.5 s of that is the agent, the rest is the 4 s
+microphone window plus transcription. `mind` reads `J`. With the judgment
+told to use the Pi 5 instead (`fallback` scene): 49.8 s the first time the Pi
+5 sees the prompt, 24.5 s the next, `mind` `5`. The three Jetson processes hold about 4.09 GB resident
 against a 6.5 GB budget, which is what leaves room for the VLM and whisper to
 sit alongside the text model instead of taking turns.
 

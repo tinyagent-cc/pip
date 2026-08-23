@@ -4,7 +4,7 @@ A two to three minute film, shot in one sitting. Every scene captions itself
 on the HUD, so there is no voice-over to record and nothing to edit in
 afterwards. Read this page once, check the four health lines, then shoot.
 
-Numbers marked `{{...}}` land from the acceptance run.
+Every number here is from the 2026-08-23 acceptance run (`docs/acceptance-2026-08-23.md`).
 
 ## Before the camera goes on
 
@@ -43,7 +43,7 @@ Pip says **"Press my button."** Press it. The wink is already on the panel
 before your finger is off the button. If you wait more than six seconds the
 scene stages the press itself, which is how the same script runs unattended.
 
-HUD: caption `reflex`, `rfx {{wire_reflex_us}}`, glyphs `W F B C` green.
+HUD: caption `reflex`, `rfx 114us` give or take 50 µs, glyphs `W F B C` green.
 About 15 seconds of footage.
 
 Say to camera, if you are talking over it: that was a rule, not a model.
@@ -57,9 +57,10 @@ Hold the button for a second and a half, then ask a question out loud. The
 face goes to listening, then thinking, then the answer arrives spoken with
 the same text in the bubble.
 
-HUD: `jdg 9.7s`, `mind` reads `J`. Measured 2026-08-23: 9.8 s from release to
-spoken answer, `judge_ms` 9758. Four of those seconds are the microphone
-window (`--listen-seconds 4`), so the wait is honest rather than slow.
+HUD: `jdg 3.2s` or thereabouts, `mind` reads `J`. Measured 2026-08-23 over
+the wire: 8.8 s from the hold to the answer text, spoken about 9.0 s in;
+`judge_ms` 3.2 to 3.5 s. Four of those seconds are the microphone window
+(`--listen-seconds 4`), so the wait is honest rather than slow.
 
 About 20 seconds of footage. The scene ends by itself once the answer lands.
 
@@ -127,9 +128,12 @@ ssh orin@orin-desktop.local 'systemctl --user stop llama-text.service'
 ssh orin@orin-desktop.local 'systemctl --user start llama-text.service'
 ```
 
-The spec budgets 40 s for a fallback answer against the Jetson's 10 s. The Pi
-5 path has not been timed end to end yet: `{{fallback_judge_s}}`. Shoot this
-one with room to run long. About 40 seconds.
+The spec budgets 40 s for a fallback answer against the Jetson's 10 s.
+Measured 2026-08-23: 49.8 s from the hold to the answer the first time the Pi
+5 sees the prompt (`judge_ms` 44.3 s, 36.8 s of it the first model turn), 24.5 s
+the second time (`judge_ms` 19.0 s) once llama-server has the prompt prefix
+cached. Warm the Pi 5 with one throwaway hold before the take, and still shoot
+this one with room to run long. About 40 seconds.
 
 ### 7. tour
 
