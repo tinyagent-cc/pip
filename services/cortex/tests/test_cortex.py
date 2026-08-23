@@ -341,6 +341,7 @@ def test_health_shape_all_up(client, monkeypatch):
         "vlm": True,
         "camera": True,
         "mic": True,
+        "search": cortex._search_available(),
     }
 
 
