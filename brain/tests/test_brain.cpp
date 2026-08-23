@@ -57,7 +57,8 @@ TEST_CASE("a failed senses poll is never cached; hold re-probes once the body re
     Brain brain({.senses_poll_ms = 50}, body, policy, log, {.llm_url = llm.url(), .timeout_s = 5});
     std::this_thread::sleep_for(std::chrono::milliseconds(150));  // a few failing poll ticks
     brain.wait_idle();
-    CHECK(std::count(body.snapshot().begin(), body.snapshot().end(), "senses") >= 2);
+    auto calls0 = body.snapshot();  // one copy: begin()/end() must come from the same container
+    CHECK(std::count(calls0.begin(), calls0.end(), std::string("senses")) >= 2);
 
     body.fail = false; body.next_senses = {15, 26, true, true};  // "the Pico may boot later"
     brain.post_event(json{{"event","button.hold"}});
