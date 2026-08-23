@@ -196,7 +196,7 @@ void Judgment::warm_fallback_async() {
             for (auto& t : dts) schemas.push_back(t.schema);
             OpenAIChat llm;
             llm.model = cfg_.model;
-            llm.api_key = "";
+            llm.api_key = cfg_.api_key;
             llm.base_url = cfg_.llm2_url;
             llm.temperature = cfg_.temperature;
             llm.max_tokens = 1;
@@ -278,6 +278,7 @@ Verdict Judgment::react(const std::string& trigger, const Context& ctx) {
             std::vector<AnyChat> fallbacks;
             LLMConfig fb;  // explicit members: gcc 14 -Wextra flags partial designated init
             fb.base_url = cfg_.llm2_url;
+            fb.api_key = cfg_.api_key;
             fb.timeout_seconds = cfg_.timeout_s;
             fallbacks.push_back(init_chat_model("openai:" + cfg_.model, fb));
             cfg.middlewares.push_back(middleware::model_fallback(std::move(fallbacks)));

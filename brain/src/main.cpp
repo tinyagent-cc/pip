@@ -233,6 +233,7 @@ int main(int argc, char** argv) {
     JudgmentConfig jcfg;
     jcfg.llm_url = cfg.llm_url;
     jcfg.model = cfg.model;
+    if (const char* k = std::getenv("PIP_LLM_API_KEY")) jcfg.api_key = k;  // hosted endpoints; unset for local llama-server
     jcfg.llm2_url = cfg.llm2_url;
     jcfg.timeout_s = cfg.llm_timeout_s;
     jcfg.max_tokens = cfg.max_tokens;

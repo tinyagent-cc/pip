@@ -13,7 +13,8 @@ namespace pip::brain {
 
 struct JudgmentConfig {
     std::string llm_url;          // e.g. http://orin-desktop.local:8081 ; empty disables the layer
-    std::string model = "Qwen2.5-3B-Instruct";
+    std::string model = "Qwen2.5-3B-Instruct";  // a label to the single-model llama-server; the dial lives in pip-llm
+    std::string api_key;                        // for hosted OpenAI-compatible endpoints; local servers ignore it
     std::string llm2_url;         // optional fallback OpenAI-compatible server
     int timeout_s = 90;
     int max_tokens = 200;
