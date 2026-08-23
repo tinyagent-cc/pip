@@ -68,7 +68,8 @@ ssh pi@pi5.local 'cd ~/pip && git pull && brain/scripts/build-pi5.sh'
 
 Reads `tiny_agent` from `~/tiny_agent_cpp` (override with `TINY_AGENT_DIR`)
 and `rete_cpp` from its `build-reflex/_deps` if already fetched there
-(override with `PIP_RETE_DIR`; leave it unset to let CMake fetch it fresh).
+(override with `PIP_RETE_DIR`; if neither path exists, CMake fetches the pinned
+rete_cpp itself).
 Output lands in `brain/build-pi5/pip-brain`.
 
 ## Deploy to the Pi Zero
