@@ -22,8 +22,12 @@ Senses HttpBody::senses() {
     if (!res || res->status != 200) return s;
     auto j = json::parse(res->body, nullptr, false);
     if (!j.is_object()) return s;
-    s.light_lux = j.value("light_lux", -1.0); s.temp_c = j.value("temp_c", 0.0);
-    s.button_down = j.value("button", "up") == "down"; s.ok = true;
+    try {
+        s.light_lux = j.value("light_lux", -1.0); s.temp_c = j.value("temp_c", 0.0);
+        s.button_down = j.value("button", "up") == "down"; s.ok = true;
+    } catch (const json::exception&) {
+        return Senses{};
+    }
     return s;
 }
 }

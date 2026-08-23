@@ -22,7 +22,10 @@ struct FakeBody : IBody {
 class FakePip {
 public:
     Senses senses{10.0, 25.0, false, true};
-    std::vector<std::string> calls;   // read after the calls completed (test thread)
+    // When non-empty, sent verbatim as the body of GET /senses instead of the
+    // normal `senses` JSON encoding -- lets a test hand HttpBody a wrong-typed
+    // or malformed payload.
+    std::string senses_override_body;
     FakePip() {
         static const std::set<std::string> emotions{"idle","happy","sleepy","thinking","alert","wink"};
         static const std::set<std::string> chirps{"rise","trill","drop","purr"};
@@ -45,6 +48,7 @@ public:
         });
         svr_.Get("/senses", [this](const httplib::Request&, httplib::Response& rs) {
             record("senses");
+            if (!senses_override_body.empty()) { rs.set_content(senses_override_body, "application/json"); return; }
             nlohmann::json j{{"light_lux", senses.light_lux}, {"temp_c", senses.temp_c}, {"button", senses.button_down ? "down" : "up"}};
             rs.set_content(j.dump(), "application/json");
         });
@@ -54,8 +58,9 @@ public:
     }
     ~FakePip() { svr_.stop(); th_.join(); }
     std::string url() const { return "http://127.0.0.1:" + std::to_string(port_); }
+    std::vector<std::string> snapshot() { std::lock_guard<std::mutex> g(m_); return calls; }
 private:
     void record(std::string s) { std::lock_guard<std::mutex> g(m_); calls.push_back(std::move(s)); }
-    std::mutex m_; httplib::Server svr_; int port_ = 0; std::thread th_;
+    std::mutex m_; std::vector<std::string> calls; httplib::Server svr_; int port_ = 0; std::thread th_;
 };
 }  // namespace pip::brain
