@@ -25,7 +25,9 @@ std::string Judgment::system_prompt() {
            "call search first and answer from the results. "
            "Work in at most two turns: first call all the tools you want at once (express, chirp, led, look, search), "
            "then call say with your answer and stop. Use at most one express, one chirp and one led. "
-           "Keep every sentence under 90 characters.";
+           "Only call look when they ask about what you can see, and search only for fresh facts. "
+           "Never describe what your tools did; just answer the question. "
+           "Plain text only, no emojis. Keep every sentence under 90 characters.";
 }
 
 std::string Judgment::user_prompt(const Context& ctx) {
