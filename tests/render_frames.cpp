@@ -104,6 +104,13 @@ static void render_scene(const char* name, const SceneArgs& a) {
         e = Emotion::Talking;
         bubble = "I'm Pip.";
         talking = true;
+    } else if (Hud::caption_style(name).icon != Hud::ICON_NONE) {
+        // A machinery-ticker caption ("deep-agent", "tool search", "rete
+        // press-wink", "ears whisper"): the face thinks while the caption
+        // names the tiny_agent part at work.
+        e = Emotion::Thinking;
+        u.has_judge_ms = true; u.judge_ms = a.judge_ms;
+        u.mind = 'J';
     } else {
         std::fprintf(stderr, "unknown scene %s\n", name);
         return;
@@ -119,7 +126,11 @@ static void render_scene(const char* name, const SceneArgs& a) {
     h.set_senses(lux, night, temp, true, true);
     h.apply(u);
     h.draw(fb, true);
-    dump2x(name);
+    // Ticker captions carry spaces; the file on disk should not.
+    char fname[32];
+    std::snprintf(fname, sizeof fname, "%s", name);
+    for (char* c = fname; *c; ++c) if (*c == ' ') *c = '-';
+    dump2x(fname);
 }
 
 static const char* kScenes[] = {"reflex", "judge", "night", "fallback", "fever", "who", "tour"};

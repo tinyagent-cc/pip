@@ -66,6 +66,7 @@ public:
 
     // Qwen3-style thinking models leak "<think>...</think>" ahead of the
     // answer when the server does not strip it; Pip never speaks its thoughts.
+    void ticker(const std::string& s);
     static std::string strip_think(std::string text);
 
     static std::string system_prompt();

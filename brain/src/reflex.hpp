@@ -19,8 +19,11 @@ public:
     tiny_agent::MiddlewareFn guardrail_middleware();
     tiny_agent::middleware::ReflexEngine& rx() { return rx_; }
     bool room_dark() const { return dark_.load(); }
+    // Name of the last rule an on_event action ran, for the HUD ticker.
+    const std::string& last_rule() const { return last_rule_; }
 private:
     void install_rules();
+    void caption(const std::string& s);
     void install_guardrails();
     IBody& body_; Policy& policy_; EventLog& log_;
     tiny_agent::middleware::ReflexEngine rx_;
@@ -30,5 +33,6 @@ private:
     int64_t now_ms_ = 0;           // set by on_event for the actions
     int64_t last_us_ = 0;          // duration of the last on_event, for the HUD
     int fired_ = 0;                // incremented by every action
+    std::string last_rule_;        // last act() rule name, worker thread only
 };
 }

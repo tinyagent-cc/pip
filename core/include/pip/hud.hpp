@@ -23,6 +23,15 @@ public:
     static constexpr int CAPTION_X = 6, CAPTION_Y = 203, GLYPH_Y = 203, GLYPH_RIGHT = 6;
     static constexpr uint16_t BG = rgb565(6, 6, 12), FG = rgb565(200, 200, 215), DIM = rgb565(60, 60, 80),
                               OK = rgb565(60, 220, 120), WARN = rgb565(240, 180, 40);
+    // Machinery ticker palette: each part of tiny_agent gets a colour and an 8x8
+    // pixel icon, so the caption reads like a status emoji even on film.
+    static constexpr uint16_t AGENT = rgb565(235, 110, 235), TOOL = rgb565(90, 200, 245),
+                              RETE = rgb565(255, 200, 70), EARS = rgb565(120, 230, 120);
+    enum Icon : int8_t { ICON_NONE = -1, ICON_ROBOT = 0, ICON_GEAR, ICON_SEARCH, ICON_EYE, ICON_SPEAK, ICON_MIC, ICON_BOLT };
+    struct CaptionStyle { uint16_t colour; int8_t icon; };
+    // Pure prefix classifier: "deep-agent", "tool <name>", "rete <rule>",
+    // "ears <what>" get their colour + icon; anything else is a scene name in FG.
+    static CaptionStyle caption_style(const char* scene);
     void apply(const HudUpdate& u);                     // merges the has_* fields
     void set_senses(float lux, bool night, float temp_c, bool wire, bool wifi);
     const HudState& state() const { return s_; }

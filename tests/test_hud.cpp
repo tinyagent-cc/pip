@@ -78,5 +78,36 @@ static void run() {
     // A change too small to move a pixel does not cost an SPI push.
     h.set_senses(20.0f, true, 25.02f, true, true);
     CHECK(h.draw(fb, false).empty());
+
+    // Machinery ticker: each caption family gets its colour and icon.
+    CHECK_EQ(Hud::caption_style("deep-agent").colour, Hud::AGENT);
+    CHECK_EQ((int)Hud::caption_style("deep-agent").icon, (int)Hud::ICON_ROBOT);
+    CHECK_EQ(Hud::caption_style("tool search").colour, Hud::TOOL);
+    CHECK_EQ((int)Hud::caption_style("tool search").icon, (int)Hud::ICON_SEARCH);
+    CHECK_EQ((int)Hud::caption_style("tool look").icon, (int)Hud::ICON_EYE);
+    CHECK_EQ((int)Hud::caption_style("tool say").icon, (int)Hud::ICON_SPEAK);
+    CHECK_EQ((int)Hud::caption_style("tool express").icon, (int)Hud::ICON_GEAR);
+    CHECK_EQ(Hud::caption_style("rete press-wink").colour, Hud::RETE);
+    CHECK_EQ((int)Hud::caption_style("rete press-wink").icon, (int)Hud::ICON_BOLT);
+    CHECK_EQ(Hud::caption_style("ears whisper").colour, Hud::EARS);
+    CHECK_EQ((int)Hud::caption_style("ears whisper").icon, (int)Hud::ICON_MIC);
+    CHECK_EQ(Hud::caption_style("fallback").colour, Hud::FG);       // plain scene names stay plain
+    CHECK_EQ((int)Hud::caption_style("fallback").icon, (int)Hud::ICON_NONE);
+
+    // A ticker caption paints its icon and shifts the text right of it.
+    HudUpdate tick;
+    tick.has_scene = true; std::snprintf(tick.scene, sizeof tick.scene, "tool search");
+    h.apply(tick);
+    CHECK(!h.draw(fb, false).empty());
+    bool icon_px = false;
+    for (int y = Hud::CAPTION_Y; y < Hud::CAPTION_Y + 16 && !icon_px; ++y)
+        for (int x = Hud::CAPTION_X; x < Hud::CAPTION_X + 16; ++x)
+            if (fb.at(x, y) == Hud::TOOL) { icon_px = true; break; }
+    CHECK(icon_px);
+    // The mind glyph colours by who answered: 'J' green, '5' amber.
+    HudUpdate m5; m5.has_mind = true; m5.mind = '5';
+    h.apply(m5);
+    h.draw(fb, false);
+    CHECK_EQ(fb.at(304, 204), Hud::WARN);          // '5' glyph column
 }
 TEST_MAIN()

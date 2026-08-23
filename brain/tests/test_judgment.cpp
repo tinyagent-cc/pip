@@ -15,6 +15,16 @@ struct Rig {
     EventLog log{50, nullptr};
     Reflex rx{body, policy, log};
 };
+// The machinery ticker rides the HUD; body-action tests look past it.
+static V acts(const V& c) {
+    V out;
+    for (auto& s : c) if (s.rfind("hud:", 0) != 0) out.push_back(s);
+    return out;
+}
+static bool hud_has(const V& c, const std::string& needle) {
+    for (auto& s : c) if (s.rfind("hud:", 0) == 0 && s.find(needle) != std::string::npos) return true;
+    return false;
+}
 }  // namespace
 
 TEST_CASE("hold: agent calls express through the body tool, usage and latency are logged") {
@@ -29,7 +39,10 @@ TEST_CASE("hold: agent calls express through the body tool, usage and latency ar
     CHECK(v.mind == 'J');
     CHECK(v.ms >= 0);
     // No speaker: the closing sentence still reaches the bubble.
-    CHECK(r.body.snapshot() == V{"express:happy", "say:I smiled at you."});
+    CHECK(acts(r.body.snapshot()) == V{"express:happy", "say:I smiled at you."});
+    // The machinery ticker narrated the run on the HUD caption.
+    CHECK(hud_has(r.body.snapshot(), "deep-agent"));
+    CHECK(hud_has(r.body.snapshot(), "tool express"));
     CHECK(r.log.count(EventLog::Kind::Llm) == 2);        // one entry per model round trip
     auto t = r.log.tail(10); bool tokens = false;
     for (auto& e : t) if (e["kind"] == "llm") { CHECK(e["prompt_tokens"].get<int>() > 0); tokens = true; }
@@ -86,7 +99,7 @@ TEST_CASE("the say tool speaks through the speaker and is not repeated at the en
     Verdict verdict = j.react("button.hold", Context{});
     sp.wait_idle();
     CHECK(verdict.reply == "A reflex is a rule, not a thought.");
-    auto calls = r.body.snapshot();
+    auto calls = acts(r.body.snapshot());
     REQUIRE(calls.size() == 2);
     CHECK(calls[0] == "say:A reflex is a rule, not a thought.");
     CHECK(calls[1].rfind("speak:", 0) == 0);          // said once, spoken once
@@ -175,7 +188,9 @@ TEST_CASE("night guardrail applies to the model's led call") {
     JudgmentConfig jcfg; jcfg.llm_url = llm.url(); jcfg.timeout_s = 5;  // explicit: gcc -Wextra flags partial designated init
     Judgment j(jcfg, r.body, r.rx, r.log);
     j.react("button.hold", Context{});
-    CHECK(r.body.snapshot() == V{"led:40,40,40", "say:Bright!"});
+    CHECK(acts(r.body.snapshot()) == V{"led:40,40,40", "say:Bright!"});
+    // The guardrail announced itself on the ticker too.
+    CHECK(hud_has(r.body.snapshot(), "rete night-cap"));
 }
 
 TEST_CASE("disabled without a URL; unreachable server returns empty and logs") {

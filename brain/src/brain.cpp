@@ -166,10 +166,13 @@ void Brain::process_event(const std::string& name, int64_t t_ms,
     // behind a slow judgment call must be evaluated against the dequeue
     // clock, not the (possibly much older) enqueue time. t_ms still ages
     // record_recent entries, which want when the event actually happened.
-    reflex_.on_event(name, now_ms());
+    int fired = reflex_.on_event(name, now_ms());
     {
         HudFields f;
         f.reflex_us = static_cast<long>(reflex_.last_event_us());
+        // The caption doubles as a machinery ticker: name the rete rule that
+        // just ran so the screen narrates what tiny_agent is doing.
+        if (fired > 0) f.scene = std::string("rete ").append(reflex_.last_rule()).substr(0, 15);
         body_.hud(f);      // the microseconds column, pushed on every event
     }
     record_recent(name, t_ms);
@@ -182,6 +185,11 @@ void Brain::process_event(const std::string& name, int64_t t_ms,
         lang = typed_lang;
         log_.note("typed transcript: \"" + typed + "\"");
     } else if (cortex_up) {
+        {
+            HudFields f;
+            f.scene = std::string("ears whisper");
+            body_.hud(f);
+        }
         auto heard = cortex_->listen(cfg_.listen_seconds);
         cortex_up = heard.has_value();
         if (heard) { transcript = heard->text; lang = heard->lang; }
@@ -229,6 +237,9 @@ void Brain::process_event(const std::string& name, int64_t t_ms,
     f.judge_ms = v.ms;
     f.mind = v.mind;
     f.cortex = cortex_up;
+    // Hand the caption back to whatever scene is running (empty clears the
+    // last ticker entry when no scene is).
+    f.scene = scene_name();
     body_.hud(f);
     log_.note("judgment: " + v.reply);
     // Pip remembers the exchange, so "what did I just ask you" works. Four

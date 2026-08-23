@@ -10,6 +10,45 @@ constexpr int CAPTION_SCALE = 2;
 // 2.8" panel. Labels lose their space so the worst case ("25C rfx1.2ms jdg850ms", 21
 // characters, 250 px) still fits from x 64 on a 320 px panel next to a 40 px lux bar.
 constexpr int STATS_SCALE = 2;
+
+// 8x8 pixel icons, MSB left. Drawn at the caption scale, they are the "emoji"
+// a 320x240 panel can honestly render.
+constexpr uint8_t ICONS[][8] = {
+    // robot: antenna, square head, two eyes, mouth
+    {0b00011000, 0b00011000, 0b01111110, 0b01011010, 0b01111110, 0b01100110, 0b01111110, 0b00100100},
+    // gear: four teeth around a ring
+    {0b00011000, 0b01111110, 0b01100110, 0b11000011, 0b11000011, 0b01100110, 0b01111110, 0b00011000},
+    // magnifier: lens upper-left, handle to lower-right
+    {0b00111000, 0b01000100, 0b01000100, 0b01000100, 0b00111010, 0b00000101, 0b00000010, 0b00000000},
+    // eye: almond with a pupil
+    {0b00000000, 0b00111100, 0b01111110, 0b11100111, 0b11100111, 0b01111110, 0b00111100, 0b00000000},
+    // speaker: cone plus sound waves
+    {0b00001001, 0b00011010, 0b01111001, 0b01111101, 0b01111001, 0b00011010, 0b00001001, 0b00000000},
+    // microphone: capsule on a stem
+    {0b00111000, 0b00111000, 0b00111000, 0b00111000, 0b00010000, 0b00111000, 0b00010000, 0b00111000},
+    // lightning bolt
+    {0b00001100, 0b00011000, 0b00110000, 0b01111100, 0b00011000, 0b00110000, 0b01100000, 0b01000000},
+};
+
+void draw_icon(pip::Framebuffer& fb, int x, int y, int idx, int scale, uint16_t colour) {
+    for (int r = 0; r < 8; ++r)
+        for (int c = 0; c < 8; ++c)
+            if (ICONS[idx][r] & (0x80u >> c))
+                fb.fill_rect(pip::Rect{(int16_t)(x + c * scale), (int16_t)(y + r * scale), (int16_t)scale, (int16_t)scale}, colour);
+}
+
+bool starts(const char* s, const char* p) { return std::strncmp(s, p, std::strlen(p)) == 0; }
+}
+
+Hud::CaptionStyle Hud::caption_style(const char* scene) {
+    if (starts(scene, "deep-agent")) return {AGENT, ICON_ROBOT};
+    if (starts(scene, "tool search")) return {TOOL, ICON_SEARCH};
+    if (starts(scene, "tool look")) return {TOOL, ICON_EYE};
+    if (starts(scene, "tool say")) return {TOOL, ICON_SPEAK};
+    if (starts(scene, "tool ")) return {TOOL, ICON_GEAR};
+    if (starts(scene, "rete ")) return {RETE, ICON_BOLT};
+    if (starts(scene, "ears ")) return {EARS, ICON_MIC};
+    return {FG, ICON_NONE};
 }
 
 void Hud::apply(const HudUpdate& u) {
@@ -63,12 +102,23 @@ Rect Hud::draw(Framebuffer& fb, bool force) {
     fb.fill_rect(strip, BG);
 
     // Top line: what Pip is doing on the left, who is alive on the right.
-    if (r.scene[0]) draw_text(fb, CAPTION_X, CAPTION_Y, r.scene, CAPTION_SCALE, FG);
-    else draw_text(fb, CAPTION_X, CAPTION_Y, "idle", CAPTION_SCALE, DIM);
+    if (r.scene[0]) {
+        CaptionStyle st = caption_style(r.scene);
+        int tx = CAPTION_X;
+        if (st.icon != ICON_NONE) {
+            draw_icon(fb, CAPTION_X, CAPTION_Y, st.icon, CAPTION_SCALE, st.colour);
+            tx += 10 * CAPTION_SCALE;
+        }
+        draw_text(fb, tx, CAPTION_Y, r.scene, CAPTION_SCALE, st.colour);
+    } else {
+        draw_text(fb, CAPTION_X, CAPTION_Y, "idle", CAPTION_SCALE, DIM);
+    }
     const char glyphs[5] = {'W', 'F', 'B', 'C', r.mind};
     const uint16_t colours[5] = {
         (r.flags & 1) ? OK : DIM, (r.flags & 2) ? OK : DIM,
-        (r.flags & 4) ? OK : DIM, (r.flags & 8) ? OK : DIM, FG,
+        (r.flags & 4) ? OK : DIM, (r.flags & 8) ? OK : DIM,
+        // The mind glyph says which box answered; give it that box's colour.
+        r.mind == 'J' ? OK : (r.mind == '5' ? WARN : DIM),
     };
     int gx = Framebuffer::W - GLYPH_RIGHT - (6 * CAPTION_SCALE * 5 - CAPTION_SCALE);
     for (int i = 0; i < 5; ++i) {

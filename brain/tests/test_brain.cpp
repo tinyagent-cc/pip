@@ -50,7 +50,9 @@ TEST_CASE("every event pushes its microseconds to the HUD") {
     REQUIRE_FALSE(push.empty());
     auto j = json::parse(push.substr(4));
     CHECK(j["reflex_us"].get<long>() >= 0);
-    CHECK(j.size() == 1);          // nothing else on the strip was overwritten
+    // The caption names the rete rule that just ran; nothing else rides along.
+    CHECK(j["scene"] == "rete press-wink");
+    CHECK(j.size() == 2);
 }
 
 TEST_CASE("senses poller raises temp.hot once") {

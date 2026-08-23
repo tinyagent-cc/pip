@@ -17,12 +17,22 @@ Reflex::Reflex(IBody& body, Policy& policy, EventLog& log) : body_(body), policy
     install_guardrails();
 }
 
+// The HUD caption doubles as a machinery ticker: whichever rete rule or
+// guardrail just ran puts its name on the strip (15 chars is what the body
+// renders).
+void Reflex::caption(const std::string& s) {
+    HudFields f;
+    f.scene = s.size() > 15 ? s.substr(0, 15) : s;
+    body_.hud(f);
+}
+
 // Each rule: a named action that does its body calls, then logs rule + microseconds + what it did.
 void Reflex::install_rules() {
     auto& eng = rx_.engine();
     auto act = [this](const char* rule, std::function<std::string()> run) {
         return [this, rule, run](rete::ReteEngine&, const rete::Bindings&) {
             Timer t; std::string detail = run(); ++fired_;
+            last_rule_ = rule;
             log_.reflex(rule, t.us(), detail.empty() ? "-" : detail);
         };
     };
@@ -97,6 +107,7 @@ void Reflex::install_guardrails() {
                 if (capped != v) rx_.outcome().replace_arg(idx, k, capped);
             }
             log_.reflex("night-led-cap", t.us(), origs.empty() ? "-" : origs + " -> " + caps);
+            caption("rete night-cap");
         }).build();
 
     // chirp-rate: only the earliest tool call (lowest index) in a batch is

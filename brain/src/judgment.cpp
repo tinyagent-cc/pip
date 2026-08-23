@@ -56,6 +56,14 @@ std::string Judgment::user_prompt(const Context& ctx) {
 
 // Speech goes through the Speaker when there is one, so the worker thread is
 // never blocked on TTS; without one the bubble is all Pip can manage.
+// Machinery ticker: the HUD caption names what the deep agent is doing
+// right now (which tool, which phase). 15 chars is the body's caption cap.
+void Judgment::ticker(const std::string& s) {
+    HudFields f;
+    f.scene = s.size() > 15 ? s.substr(0, 15) : s;
+    body_.hud(f);
+}
+
 void Judgment::speak(const std::string& text) {
     if (speaker_) speaker_->say(text, true, lang_);
     else body_.say(text);
@@ -67,6 +75,7 @@ std::vector<DynamicTool> Judgment::tools(std::string& said) {
             [this](const json& p) -> json {
                 auto e = p.value("emotion", "");
                 log_.tool("express", e);
+                ticker("tool express");
                 return json{{"ok", body_.express(e)}};
             },
             json{{"type","object"},
@@ -77,6 +86,7 @@ std::vector<DynamicTool> Judgment::tools(std::string& said) {
             [this](const json& p) -> json {
                 auto n = p.value("name", "");
                 log_.tool("chirp", n);
+                ticker("tool chirp");
                 return json{{"ok", body_.chirp(n)}};
             },
             json{{"type","object"},
@@ -87,6 +97,7 @@ std::vector<DynamicTool> Judgment::tools(std::string& said) {
             [this](const json& p) -> json {
                 int r = p.value("r", 0), g = p.value("g", 0), b = p.value("b", 0);
                 log_.tool("led", std::to_string(r) + "," + std::to_string(g) + "," + std::to_string(b));
+                ticker("tool led");
                 return json{{"ok", body_.led(r, g, b)}};
             },
             json{{"type","object"},
@@ -97,6 +108,7 @@ std::vector<DynamicTool> Judgment::tools(std::string& said) {
             [this](const json&) -> json {
                 auto s = body_.senses();
                 log_.tool("senses", "-");
+                ticker("tool senses");
                 return json{{"light_lux", s.light_lux}, {"temp_c", s.temp_c}, {"button", s.button_down ? "down" : "up"}, {"ok", s.ok}};
             },
             json{{"type","object"},{"properties", json::object()}}),
@@ -105,6 +117,7 @@ std::vector<DynamicTool> Judgment::tools(std::string& said) {
             [this, &said](const json& p) -> json {
                 auto text = p.value("text", "");
                 log_.tool("say", text);
+                ticker("tool say");
                 if (text.empty()) return json{{"ok", false}};
                 said = text;                 // so the closing sentence is not repeated
                 speak(text);
@@ -118,6 +131,7 @@ std::vector<DynamicTool> Judgment::tools(std::string& said) {
             [this](const json& p) -> json {
                 auto q = p.value("question", "What do you see?");
                 log_.tool("look", q);
+                ticker("tool look");
                 if (cortex_) {
                     if (auto seen = cortex_->see(q)) return json{{"seen", *seen}};
                 }
@@ -133,6 +147,7 @@ std::vector<DynamicTool> Judgment::tools(std::string& said) {
             [this](const json& p) -> json {
                 auto q = p.value("query", "");
                 log_.tool("search", q);
+                ticker("tool search");
                 if (q.empty()) return json{{"results", "nothing to search for"}};
                 if (cortex_) {
                     if (auto hits = cortex_->search(q)) return json{{"results", *hits}};
@@ -202,6 +217,7 @@ Verdict Judgment::react(const std::string& trigger, const Context& ctx) {
     if (!enabled()) return v;
     lang_ = ctx.lang;
     auto t_start = std::chrono::steady_clock::now();
+    ticker("deep-agent");
     std::string said;                 // set by the say tool
     bool primary_answered = false;
     const bool forced = this->forced();
