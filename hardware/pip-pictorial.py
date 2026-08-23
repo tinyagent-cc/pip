@@ -118,33 +118,38 @@ d.add(elm.Line().at(btn.end).to((-13.5, pb[1])).color(BK))
 d.add(elm.Line().at(pg).to((-13.5, pg[1])).color(BK))
 d.add(elm.Line().at((-13.5, pg[1])).to((-13.5, pb[1])).color(BK))
 
-# Pi Zero 2 W: its 40-pin header drawn like the Pico's, two columns of 20. Hold the Zero with
-# the header vertical and the SD card slot at the BOTTOM: odd pins are the left column counted
-# from the bottom (1, 3, 5 ...), even pins the right column (2, 4, 6 ...). Pin 1 is the square
-# pad at the bottom-left, next to the SD card. Placed so pins 10, 8, 6 sit level with Pico
-# pins 1, 2, 3 and the three link wires are straight lines.
+# Pi Zero 2 W: its 40-pin header drawn like the Pico's, two columns of 20. Hold the Zero (seen
+# from above, header side up) turned so the header is vertical along the RIGHT edge of the board
+# with the SD card slot at the TOP. Pin 1 is then the square pad at the top-left of the header
+# (the inner row, at the SD-card end); odd pins run down the left column, even pins down the
+# right column. Placed so pins 10, 8, 6 sit level with Pico pins 1, 2, 3 and the three link wires
+# are straight lines.
 ZERO_EVEN = ["5V","5V","GND","GPIO14 TXD","GPIO15 RXD","GPIO18","GND","GPIO23","GPIO24","GND",
              "GPIO25","GPIO8 CE0","GPIO7 CE1","ID_SC","GND","GPIO12","GND","GPIO16","GPIO20","GPIO21"]
 ZERO_ODD  = ["3V3","GPIO2 SDA","GPIO3 SCL","GPIO4","GND","GPIO17","GPIO27","GPIO22","3V3","GPIO10 MOSI",
              "GPIO9 MISO","GPIO11 SCLK","GND","ID_SD","GPIO5","GPIO6","GPIO13","GPIO19","GPIO26","GND"]
-zero_pins = [elm.IcPin(name=f"{ZERO_ODD[k]}", pin=str(2*k+1), side="left", anchorname=f"z{2*k+1}") for k in range(20)]
-zero_pins += [elm.IcPin(name=f"{ZERO_EVEN[k]}", pin=str(2*k+2), side="right", anchorname=f"z{2*k+2}") for k in range(20)]
-# Pico pin 1 sits at y = +6.65 (top of its left column); Zero pin 10 is the 5th even pin from
-# the bottom, at y = center - 6.65 + 4*0.7, so center = 6.65 + 6.65 - 2.8 = 10.5.
-ZC = (-25.0, 10.5)
+# IcPin lists run bottom to top, so pin 39 is first on the left and pin 1 last (top).
+zero_pins = [elm.IcPin(name=ZERO_ODD[k], pin=str(2*k+1), side="left", anchorname=f"z{2*k+1}") for k in range(19, -1, -1)]
+zero_pins += [elm.IcPin(name=ZERO_EVEN[k], pin=str(2*k+2), side="right", anchorname=f"z{2*k+2}") for k in range(19, -1, -1)]
+# Pico pin 1 is at y = +6.65 (top of its left column). Zero pin 10 is the 5th even pin from the
+# top, at y = center + 6.65 - 4*0.7 = 6.65, so center = 2.8.
+ZC = (-25.0, 2.8)
 zero = d.add(elm.Ic(pins=zero_pins, size=(7, 14.6), pinspacing=0.7, edgepadW=0.4, edgepadH=0.6, plblsize=7).right()
-             .label("Raspberry Pi Zero 2 W, 40-pin header\nseen from above, turned so the header is vertical with the SD card at the BOTTOM\nleft column = odd pins, right column = even pins, both counted up from the bottom", loc="top", ofst=0.5, fontsize=10)
+             .label("Raspberry Pi Zero 2 W, 40-pin header, seen from above (header side up)\nturned so the header runs down the RIGHT edge of the board and the SD card slot is at the TOP\npin 1 = square pad, top-left; odd pins down the left column, even pins down the right column", loc="top", ofst=0.5, fontsize=10)
              .at(ZC).anchor("center"))
 d.add(elm.Dot(radius=0.16).at(zero.z1).color("black"))
-d.add(elm.Label().at(zero.z1).label("pin 1 (square pad)", loc="left", ofst=0.45, fontsize=8))
-d.add(elm.Label().at((ZC[0], ZC[1] - 7.9)).label("[ SD card slot at this end ]\nmini HDMI and the two micro USB ports are on the long edge away from the header", fontsize=8))
-for pico_pin, zpin, col in ((pico.p1, zero.z10, OG), (pico.p2, zero.z8, YE)):
-    d.add(elm.Line().at(pico_pin).to(zpin).color(col))
-d.add(elm.Line().at(pico.p3).to(zero.z6).color(BK))
+d.add(elm.Label().at((zero.z1[0] - 0.9, zero.z1[1] + 0.15)).label("pin 1 (square pad)", loc="top", ofst=0.1, fontsize=8))
+d.add(elm.Label().at((ZC[0], ZC[1] - 7.9)).label("mini HDMI and both micro USB ports are on the long edge opposite the header (left side here)", fontsize=8))
+# GP0 TX is level with Zero pin 10: straight. GP1 and GND step up to pins 8 and 6.
+d.add(elm.Line().at(pico.p1).to(zero.z10).color(OG))
+for pico_pin, zpin, col, xv in ((pico.p2, zero.z8, YE, -12.6), (pico.p3, zero.z6, BK, -12.0)):
+    d.add(elm.Line().at(pico_pin).tox(xv).color(col))
+    d.add(elm.Line().toy(zpin[1]).color(col))
+    d.add(elm.Line().to(zpin).color(col))
 d.add(elm.Dot(radius=0.1).at(pico.p3).color(BK))
 for zpin, col in ((zero.z10, OG), (zero.z8, YE), (zero.z6, BK)):
     d.add(elm.Dot(radius=0.14).at(zpin).color(col))
-d.add(elm.Label().at((-12.5, 7.25)).label("link: GP0 TX -> Zero 10 RXD (orange), GP1 RX <- Zero 8 TXD (yellow), GND -> Zero 6 (black); 3.3 V both sides", fontsize=7.5))
+d.add(elm.Label().at((-11.0, 8.9)).label("link: GP0 TX -> Zero 10 RXD (orange), GP1 RX <- Zero 8 TXD (yellow), GND -> Zero 6 (black); 3.3 V both sides", fontsize=7.5))
 
 d.add(elm.Label().at((0, -9.0)).label("Wires that cross without a dot are not connected. Colours match hardware/pip-wiring.yml. Backlight LED pin straight to 3V3; Zero-Pico UART is TX to RX crossed; ILI9341 SDO, the touch row (T_CLK T_CS T_DIN T_DO T_IRQ) and amp GAIN/SD stay open: v0 has no touch, the button is the only input.\n"
                                         "Generated by hardware/pip-pictorial.py from firmware/pins.hpp.", fontsize=8))

@@ -36,7 +36,8 @@ a Pi 5 and deployed over SSH. Endpoints, flags, build, and deploy:
 | Pi Zero 2 W (brain) | wire link, 921600 8N1 | GP0 TX (pin 1) to Zero pin 10 (GPIO15 RXD), GP1 RX (pin 2) to Zero pin 8 (GPIO14 TXD), pin 3 GND to Zero pin 6 |
 
 Pi Zero header, first ten pins, board seen from above with the SD card to your left
-(pin 1 is the corner nearest the SD card; odd pins are the inner row, even pins the outer row):
+(pin 1 is the square pad nearest the SD card; odd pins are the inner row, even pins the outer row;
+`hardware/pip-pictorial.png` shows the same header turned 90 degrees, SD card at the top, all 40 pins named):
 
 ```
 outer (even):  2 5V   | 4 5V   | 6 GND  | 8 GPIO14 TXD | 10 GPIO15 RXD
