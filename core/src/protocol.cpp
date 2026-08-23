@@ -6,7 +6,7 @@
 namespace pip {
 namespace {
 const char* const kEmotions[] = {"idle", "happy", "sleepy", "thinking", "alert", "wink", "surprised", "sad", "listening", "talking"};
-const char* const kChirps[] = {"rise", "trill", "drop", "purr"};
+const char* const kChirps[] = {"rise", "trill", "drop", "purr", "boot", "sad"};
 static_assert(sizeof(kEmotions) / sizeof(kEmotions[0]) == (size_t)Emotion::Count, "emotion names out of step with the enum");
 static_assert(sizeof(kChirps) / sizeof(kChirps[0]) == (size_t)Chirp::Count, "chirp names out of step with the enum");
 // The commands apply_command knows. handle_request needs the list to tell "wrong method on a
