@@ -70,3 +70,22 @@ on every health read, body `rx_bad 0`, `audio_dropped 0` at the end).
 
 `render_frames --scenes --reflex-us 114 --judge-ms 3216`, frames in `docs/frames/`
 and on tinyagent.cc/pip.html.
+
+## Evening addendum: conversation upgrade
+
+Same day, after the first run. Firmware `e3358c4` (panel rotated 180°), brain
+`6ec3804`, Jetson text model switched to Qwen3-4B-Instruct-2507 with `pip-llm`.
+All typed-question runs below used `POST /event` with a `transcript`, wire up.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Conversation memory | pass | "what did I just ask you?" answered with the previous question's subject |
+| Web search | pass | "latest OpenShift version?" → `tool search`, answered "4.22" (true on 2026-08-23), 8.5 s; French question searched in French |
+| French answer + voice | pass | "Présente-toi en une phrase" → French reply through fr_FR-siwis; Arabic voice synthesizes (1.46 s clip) |
+| Thinking model | pass | qwen3-4b-thinking + `--max-tokens 1500`: three-step riddle right in 32 s, no `<think>` spoken |
+| Fallback inside 40 s | pass | scene prewarm ("fallback warmed in 26.4 s" once per server restart); steady-state hold→answer 8.4 s, mind `5` |
+| Tool discipline | pass | after the prompt tweak: no uninvited `look`, no tool narration, no emoji |
+
+Open, cosmetic: a hold in the first ~30 s after a Pi 5 restart still queues
+behind the prewarm (45 s observed once); the take just holds a beat later.
+Accented characters in the bubble render as the 5x7 font's fallback glyph.
