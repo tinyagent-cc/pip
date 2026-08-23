@@ -19,10 +19,10 @@ tone itself) are pending. Design spec: [tiny_agent](https://github.com/tinyagent
 ## Brain
 
 `brain/` is `pip-brain`: reflex rules (rete_cpp) answer most events in
-microseconds, and a tiny_agent judgment loop only steps in when a reflex
-says the event needs a real decision, which costs seconds and tokens
-instead. It runs on a Pi Zero 2 W, built on a Pi 5 and deployed over SSH.
-Endpoints, flags, build, and deploy: `brain/README.md`.
+microseconds, and a tiny_agent judgment loop only wakes on `button.hold`,
+which costs seconds and tokens instead. It runs on a Pi Zero 2 W, built on
+a Pi 5 and deployed over SSH. Endpoints, flags, build, and deploy:
+`brain/README.md`.
 
 ## Hardware and wiring
 

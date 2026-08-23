@@ -74,7 +74,11 @@ void Brain::poll_senses() {
 }
 
 void Brain::process_event(const std::string& name, int64_t t_ms) {
-    reflex_.on_event(name, t_ms);
+    // reflex_ shares Policy::last_chirp_ms_ with now_ms(); a press queued
+    // behind a slow judgment call must be evaluated against the dequeue
+    // clock, not the (possibly much older) enqueue time. t_ms still ages
+    // record_recent entries, which want when the event actually happened.
+    reflex_.on_event(name, now_ms());
     record_recent(name, t_ms);
     if (name == "button.hold" && judgment_.enabled()) {
         Context ctx;

@@ -2,9 +2,9 @@
 
 The brain sits between the Pico body and an LLM. Reflex rules (rete_cpp)
 answer most events in microseconds, no tokens spent; a tiny_agent judgment
-loop only runs when a reflex says the event needs a real decision, and that
-one takes seconds because it's a model call. `/log` shows both columns side
-by side, which is the whole point of splitting the two.
+loop only wakes on `button.hold`, and that one takes seconds because it's a
+model call. `/log` shows both columns side by side, which is the whole
+point of splitting the two.
 
 ## Run locally
 
@@ -45,16 +45,24 @@ kinds sit in the same column and stay comparable). `prompt_tokens` and
 | `--night-cap N` | 40 | max LED channel value while the room is dark |
 | `--chirp-gap-ms N` | 5000 | minimum spacing between chirps |
 | `--senses-poll-ms N` | 10000 | how often the brain polls `/senses` on the body |
-| `--llm-timeout-s N` | 90 | timeout for a judgment LLM call |
+| `--llm-timeout-s N` | 90 | read timeout per LLM round trip (no connect timeout is set) |
 | `--help` | | print usage and exit |
 
 ## Host tests
 
+On the Mac, point at local checkouts of `tiny_agent` and `rete_cpp` so the
+configure step doesn't hit the network:
+
 ```
-cmake -S brain -B build-brain -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
+cmake -S brain -B build-brain -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_TOOLCHAIN_FILE=$HOME/.vcpkg/scripts/buildsystems/vcpkg.cmake \
+  -DTINY_AGENT_DIR=$HOME/git/tiny_agent_cpp -DPIP_RETE_DIR=$HOME/git/rete_cpp
 cmake --build build-brain -j
 ctest --test-dir build-brain --output-on-failure
 ```
+
+Without `TINY_AGENT_DIR`/`PIP_RETE_DIR`, CMake fetches the pinned commits
+of both instead.
 
 ## Build on the Pi 5
 
@@ -110,14 +118,19 @@ picotool load -f -x build-fw/pip.uf2
 
 | Action | Expected |
 |---|---|
-| press the button | wink, reflex fires in microseconds |
+| press the button | wink, reflex logged in a few hundred ms |
 | lights off 30 s | sleepy expression |
 | lights back on | alert expression + trill chirp |
 | hold the button 1.5 s | thinking expression, then the model's reaction lands a few seconds later |
 
 `curl http://<brain>:8080/log?n=30` after any of the above shows the reflex
-entries in microseconds sitting next to the LLM entry in milliseconds with
-its token counts. That contrast is the whole demo.
+entries next to the LLM entry with its token counts, both in `micros`. The
+rule evaluation itself is microseconds; a rule like `press-wink` or
+`bright-alert` also has to make the HTTP round trip to the Pico to move the
+LED or play the chirp, so its logged `micros` is really a few hundred ms on
+the bench. The `bright-note` and `chirp-rate` lines don't touch the body at
+all, so their `micros` is the honest rule-evaluation number, still
+microseconds. That contrast is the whole demo.
 
 ## Same LAN, no auth
 

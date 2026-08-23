@@ -9,8 +9,11 @@ struct Timer { std::chrono::steady_clock::time_point t0 = std::chrono::steady_cl
 }
 
 Reflex::Reflex(IBody& body, Policy& policy, EventLog& log) : body_(body), policy_(policy), log_(log) {
-    room_ = rx_.engine().assert_fact(std::string("room"), std::string("light"), std::string("high"));
+    // Rules first: alpha memories created by add_rule() are not back-filled
+    // from WMEs asserted earlier, so room_ must be asserted after
+    // install_rules() or the light-state rules never see it.
     install_rules();
+    room_ = rx_.engine().assert_fact(std::string("room"), std::string("light"), std::string("high"));
     install_guardrails();
 }
 

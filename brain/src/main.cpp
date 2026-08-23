@@ -1,5 +1,6 @@
 #include <httplib.h>
 #include <nlohmann/json.hpp>
+#include <atomic>
 #include <cerrno>
 #include <csignal>
 #include <cstdio>
@@ -107,6 +108,7 @@ bool parse_args(int argc, char** argv, Config& cfg) {
         } else if (a == "--night-cap") {
             const char* v = need_value(); if (!v) return fail(a + " needs a value");
             int n; if (!parse_int(v, n)) return fail(a + " needs a number");
+            if (n < 0 || n > 255) return fail(a + " must be between 0 and 255");
             cfg.night_cap = n;
         } else if (a == "--chirp-gap-ms") {
             const char* v = need_value(); if (!v) return fail(a + " needs a value");
@@ -116,7 +118,7 @@ bool parse_args(int argc, char** argv, Config& cfg) {
         } else if (a == "--senses-poll-ms") {
             const char* v = need_value(); if (!v) return fail(a + " needs a value");
             int n; if (!parse_int(v, n)) return fail(a + " needs a number");
-            if (n < 0) return fail(a + " must not be negative");
+            if (n < 100) return fail(a + " must be at least 100");
             cfg.senses_poll_ms = n;
         } else if (a == "--llm-timeout-s") {
             const char* v = need_value(); if (!v) return fail(a + " needs a value");
@@ -131,9 +133,10 @@ bool parse_args(int argc, char** argv, Config& cfg) {
     return true;
 }
 
-httplib::Server* g_server = nullptr;
+std::atomic<httplib::Server*> g_server{nullptr};
 extern "C" void handle_stop_signal(int) {
-    if (g_server) g_server->stop();
+    httplib::Server* s = g_server.load();
+    if (s) s->stop();
 }
 
 }  // namespace
@@ -153,7 +156,6 @@ int main(int argc, char** argv) {
                 {.llm_url = cfg.llm_url, .model = cfg.model, .llm2_url = cfg.llm2_url, .timeout_s = cfg.llm_timeout_s});
 
     httplib::Server svr;
-    g_server = &svr;
 
     svr.Post("/event", [&](const httplib::Request& rq, httplib::Response& rs) {
         auto j = json::parse(rq.body, nullptr, false);
@@ -185,6 +187,8 @@ int main(int argc, char** argv) {
     bool body_up = body.senses().ok;
     log.note(std::string("startup body probe: ") + (body_up ? "ok" : "no reply yet"));
 
+    g_server.store(&svr);
     svr.listen_after_bind();
+    g_server.store(nullptr);
     return 0;
 }
