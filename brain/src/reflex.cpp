@@ -1,5 +1,6 @@
 #include "reflex.hpp"
 #include <chrono>
+#include <exception>
 namespace pip::brain {
 using namespace tiny_agent;
 namespace {
@@ -65,8 +66,22 @@ int Reflex::on_event(const std::string& name, int64_t now_ms) {
     Timer t; now_ms_ = now_ms; fired_ = 0;
     auto& eng = rx_.engine();
     auto wme = eng.assert_fact(std::string("ev"), std::string("name"), name);
-    eng.run(256);
-    eng.retract_fact(wme);
+    // Retracts the transient "ev" fact on scope exit, whether run() returns
+    // normally or a rule action throws (a body call hitting real hardware).
+    // Without this, a thrown exception would leak the fact into working
+    // memory forever, corrupting every later on_event call.
+    struct RetractGuard {
+        rete::ReteEngine& eng; rete::WmePtr wme;
+        ~RetractGuard() { eng.retract_fact(wme); }
+    };
+    try {
+        RetractGuard guard{eng, wme};
+        eng.run(256);
+    } catch (const std::exception& e) {
+        // The guard above has already retracted; safe to log and move on.
+        log_.note(std::string("reflex action threw: ") + e.what());
+    }
+    eng.clear_refraction();  // bounds refraction_set_ growth; fresh WmeIds per assert already prevent wrong re-matches
     log_.event(name, "fired=" + std::to_string(fired_) + " total_us=" + std::to_string(t.us()));
     return fired_;
 }

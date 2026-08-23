@@ -61,3 +61,16 @@ TEST_CASE("reflex timing is logged in microseconds") {
     for (auto& e : t) if (e["kind"] == "reflex" && e["name"] == "press-wink") { seen = true; CHECK(e["micros"].get<int64_t>() >= 0); CHECK(e["micros"].get<int64_t>() < 50000); }
     CHECK(seen);
 }
+TEST_CASE("a reflex action that throws does not corrupt later events") {
+    Rig r;
+    r.body.throw_on_express = true;
+    CHECK_NOTHROW(r.rx.on_event("button.press", 1000));
+    CHECK(r.body.snapshot().empty());
+    r.body.throw_on_express = false;
+    CHECK(r.rx.on_event("button.press", 1100) == 1);
+    CHECK(r.body.snapshot() == V{"express:wink", "chirp:rise"});
+    bool seen_note = false;
+    for (auto& e : r.log.tail(10))
+        if (e["kind"] == "note" && e["detail"].get<std::string>().find("reflex action threw") != std::string::npos) seen_note = true;
+    CHECK(seen_note);
+}
