@@ -169,6 +169,15 @@ out of reach: `curl -X POST http://<brain>:8080/event -d
   toi en une phrase" came back as "Je suis Pip, ton petit compagnon de
   bureau..." in the French voice.
 
+### 8b. Watch the machinery on the strip
+
+No new commands: during any hold, keep the camera on the bottom strip. The
+caption ticks through the run in colour -- gold bolt `rete hold-listen`,
+magenta robot `deep-agent`, cyan magnifier `tool search`, cyan speaker
+`tool say` -- and lands back on the scene name with the judge time and a
+green J (amber 5 when the Pi 5 answered). This is the tiny_agent internals,
+live: rete rules, the deep-agent loop, and each tool as it runs.
+
 ### 9. Swap the mind on camera
 
 ```

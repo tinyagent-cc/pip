@@ -206,6 +206,30 @@ reasoning (redeploy the brain with `--max-tokens 1500` for it, or the thought
 is cut mid-sentence; `<think>` blocks are stripped and never spoken either
 way). qwen2.5-3b is the fallback-tier model the Pi 5 still runs.
 
+Why Qwen and not Gemma: both Gemma 3n variants were put on this bench
+(2026-08-23, Q4_K_M through the same llama-server). E4B (4.5 GB) cannot
+load next to the vision and whisper services on the 7.6 GB Jetson -- the
+kernel oom-killed it 62 restarts in a row. E2B loads and generates at
+25 tok/s, but it never emits structured tool calls: asked a question that
+needs the search tool, it writes prose about calling the tool, and under
+`tool_choice: required` it produces its own ```tool_code``` fenced format
+that llama.cpp cannot parse into `tool_calls`. The deep-agent loop runs on
+tool calls, so Gemma 3n cannot drive Pip. Qwen3-4B answered the same probe
+with a clean parallel `tool_calls` array on the first try.
+
+### The screen narrates the machinery
+
+The HUD caption is a ticker for tiny_agent itself, coloured and iconed so a
+camera can read it: a gold bolt and `rete <rule>` when a reflex rule fires,
+a magenta robot and `deep-agent` when judgment starts, a cyan icon and
+`tool search` / `tool look` / `tool say` per tool call (magnifier, eye,
+speaker), a green mic and `ears whisper` while the Zero listens, and
+`rete night-cap` when the guardrail caps an LED at night. The mind glyph
+colours by who answered: J green (Jetson), 5 amber (Pi 5). Scene names take
+the caption back when a scene is running.
+
+![deep-agent](docs/frames/deep-agent.png)
+
 ## Hardware and wiring
 
 | Part | Role | Pico 2 W pins |
