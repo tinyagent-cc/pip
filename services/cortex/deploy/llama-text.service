@@ -1,0 +1,17 @@
+[Unit]
+Description=Pip Jetson text LLM (Qwen2.5-3B-Instruct Q4_K_M, CUDA)
+After=network-online.target
+
+[Service]
+Type=simple
+Environment=LD_LIBRARY_PATH=%h/tools/llama.cpp/build/bin
+Environment=PATH=/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/tools/llama.cpp/build/bin/llama-server \
+  -m %h/models/Qwen2.5-3B-Instruct-Q4_K_M.gguf \
+  --host 0.0.0.0 --port 8081 \
+  -ngl 99 -c 4096 --jinja -t 4
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
