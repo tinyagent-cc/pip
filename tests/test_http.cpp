@@ -8,11 +8,14 @@ using namespace pip::http;
 
 // Minimal Body for the feed() tests: records what the router asked for.
 struct FeedBody : pip::Body {
-    int n_express = 0, n_chirp = 0, n_led = 0;
+    int n_express = 0, n_chirp = 0, n_led = 0, n_say = 0, n_hud = 0, n_scene = 0;
     void express(pip::Emotion) override { ++n_express; }
     void chirp(pip::Chirp) override { ++n_chirp; }
     void led(uint8_t, uint8_t, uint8_t) override { ++n_led; }
-    pip::Senses senses() override { return pip::Senses{12.5f, 21.0f, false}; }
+    void say(const char*) override { ++n_say; }
+    void hud(const pip::HudUpdate&) override { ++n_hud; }
+    void scene(const char*) override { ++n_scene; }
+    pip::Senses senses() override { return pip::Senses{12.5f, 21.0f, false, {}, {}}; }
 };
 
 static void feed_tests() {
@@ -24,7 +27,7 @@ static void feed_tests() {
         CHECK_EQ(body.n_express, 1);
         std::string s(resp, rlen);
         CHECK(s.rfind("HTTP/1.0 200", 0) == 0);
-        CHECK(s.find("X-Pip-Protocol: 0\r\n") != std::string::npos);
+        CHECK(s.find("X-Pip-Protocol: 1\r\n") != std::string::npos);
         CHECK(s.find("Connection: close\r\n\r\n{\"ok\":true}") != std::string::npos);
     }
     // Split on the header/body boundary: the first chunk cannot be answered.
@@ -77,7 +80,7 @@ static void feed_tests() {
         CHECK(f == Feed::Bad);
         std::string s(resp, rlen);
         CHECK(s.rfind("HTTP/1.0 400", 0) == 0);
-        CHECK(s.find("X-Pip-Protocol: 0\r\n") != std::string::npos);
+        CHECK(s.find("X-Pip-Protocol: 1\r\n") != std::string::npos);
         CHECK(rlen < sizeof resp);
         // A full buffer stays Bad rather than silently swallowing the overflow bytes.
         CHECK(feed(buf, sizeof buf, len, junk, sizeof junk, body, resp, sizeof resp, rlen) == Feed::Bad);
@@ -157,7 +160,7 @@ static void run() {
     CHECK(std::strstr(out, "HTTP/1.0 200 OK\r\n") == out);
     CHECK(std::strstr(out, "Content-Type: application/json\r\n"));
     CHECK(std::strstr(out, "Content-Length: 11\r\n"));
-    CHECK(std::strstr(out, "X-Pip-Protocol: 0\r\n"));
+    CHECK(std::strstr(out, "X-Pip-Protocol: 1\r\n"));
     CHECK(std::strstr(out, "Connection: close\r\n\r\n{\"ok\":true}"));
     n = build_response(out, sizeof out, 400, "{\"error\":\"x\"}", "X-Extra: 1");
     out[n] = 0; CHECK(std::strstr(out, "400 Bad Request")); CHECK(std::strstr(out, "X-Extra: 1\r\n"));
