@@ -13,9 +13,16 @@ serial confirms the face loop runs, WiFi retries a failed join about every
 Chirps in the main firmware are still a print
 stub, real audio is the next integration. Bench checks (the panel, the
 button and LED, the light reading, the curl cookbook, the event POSTs, the
-tone itself) are pending. The brain (tiny_agent + rete_cpp on a Pi Zero 2 W)
-lands after it. Design spec: [tiny_agent](https://github.com/tinyagent-cc/tiny_agent)
+tone itself) are pending. Design spec: [tiny_agent](https://github.com/tinyagent-cc/tiny_agent)
 `docs/superpowers/specs/2026-08-22-pip-companion-design.md`.
+
+## Brain
+
+`brain/` is `pip-brain`: reflex rules (rete_cpp) answer most events in
+microseconds, and a tiny_agent judgment loop only steps in when a reflex
+says the event needs a real decision, which costs seconds and tokens
+instead. It runs on a Pi Zero 2 W, built on a Pi 5 and deployed over SSH.
+Endpoints, flags, build, and deploy: `brain/README.md`.
 
 ## Hardware and wiring
 
@@ -128,8 +135,7 @@ curl -s -X POST http://<pip-ip>/led     -d '{"r":0,"g":0,"b":60}'
 
 Events (`button.press`, `button.hold`, `button.release`, `light.low`,
 `light.high`) are POSTed to `http://<brain>/event` as `{"event":"..."}`, at
-most once each. The contract is `PROTOCOL.md`; none of this has run against
-a live brain yet.
+most once each. The contract is `PROTOCOL.md`.
 
 ## Audio on RP2350
 
