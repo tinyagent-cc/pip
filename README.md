@@ -33,6 +33,19 @@ a Pi 5 and deployed over SSH. Endpoints, flags, build, and deploy:
 | Tactile button | interaction | GP15 to GND (internal pull-up) |
 | RGB LED (4-pin) | mood | R GP10, G GP11, B GP12 through 220 ohm, common to GND |
 | MAX98357A + speaker | chirps (next plan) | BCLK GP26, LRC GP27, DIN GP28, VIN 3V3, GND |
+| Pi Zero 2 W (brain) | wire link, 921600 8N1 | GP0 TX (pin 1) to Zero pin 10 (GPIO15 RXD), GP1 RX (pin 2) to Zero pin 8 (GPIO14 TXD), pin 3 GND to Zero pin 6 |
+
+Pi Zero header, first ten pins, board seen from above with the SD card to your left
+(pin 1 is the corner nearest the SD card; odd pins are the inner row, even pins the outer row):
+
+```
+outer (even):  2 5V   | 4 5V   | 6 GND  | 8 GPIO14 TXD | 10 GPIO15 RXD
+inner (odd):   1 3V3  | 3 SDA  | 5 SCL  | 7 GPIO4      |  9 GND
+```
+
+Pico GP0 (TX, pin 1) goes to Zero pin 10 (RXD); Pico GP1 (RX, pin 2) to Zero pin 8
+(TXD); Pico pin 3 (GND) to Zero pin 6. TX to RX crossed, 3.3 V on both sides. On the
+Zero: `dtoverlay=disable-bt` and no serial console, so `/dev/ttyAMA0` is the link.
 
 `firmware/pins.hpp` is the source of truth for this table and for both drawings below.
 
