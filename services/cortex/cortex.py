@@ -1,8 +1,10 @@
 """Pip cortex: the Jetson's ears and eyes, behind a tiny HTTP API.
 
-  GET  /health  -> {"ok":true,"whisper":bool,"vlm":bool,"camera":bool,"mic":bool}
-  POST /listen  {"seconds":4}      -> {"text":"...","ms":N}   503 {"error":...}
+  GET  /health  -> {"ok":true,"whisper":bool,"vlm":bool,"camera":bool,"mic":bool,"search":bool}
+  POST /listen  {"seconds":4}      -> {"text":"...","lang":"en","ms":N}   503 {"error":...}
   POST /see     {"question":"..."} -> {"text":"...","ms":N}   503 {"error":...}
+  POST /search  {"query":"...","max_results":4}
+                -> {"results":[{"title","snippet","url"}],"ms":N}   503 {"error":...}
 
 `/listen` records from the Brio with `arecord` and transcribes with the CUDA
 whisper.cpp build. `/see` grabs one MJPEG frame with `gst-launch-1.0` and asks
@@ -42,6 +44,9 @@ WHISPER_BIN = _env_path("PIP_WHISPER_BIN", "~/tools/whisper.cpp/build/bin/whispe
 WHISPER_MODEL = _env_path(
     "PIP_WHISPER_MODEL", "~/tools/whisper.cpp/models/ggml-base.en.bin"
 )
+# An English-only model (*.en.bin) cannot detect languages; the multilingual
+# one runs with -l auto and reports what it heard.
+WHISPER_MULTILINGUAL = not WHISPER_MODEL.endswith(".en.bin")
 ARECORD_BIN = os.environ.get("PIP_ARECORD_BIN", "arecord")
 GST_BIN = os.environ.get("PIP_GST_BIN", "gst-launch-1.0")
 CAMERA = os.environ.get("PIP_CAMERA", "/dev/video0")
@@ -59,6 +64,7 @@ app = FastAPI(title="pip-cortex")
 
 _listen_lock = asyncio.Lock()
 _see_lock = asyncio.Lock()
+_search_lock = asyncio.Lock()
 
 
 # --- small helpers -----------------------------------------------------------
@@ -118,8 +124,17 @@ def clean_transcript(raw: str) -> str:
 # --- /listen -----------------------------------------------------------------
 
 
-def _record_and_transcribe(seconds: int) -> tuple[bool, str]:
-    """(ok, text-or-error). Blocking; called from a worker thread."""
+_LANG = re.compile(r"auto-detected language:\s*([a-z]{2})")
+
+
+def parse_lang(stderr: str) -> str:
+    """whisper-cli's stderr line 'auto-detected language: fr (p = ...)'."""
+    m = _LANG.search(stderr or "")
+    return m.group(1) if m else ""
+
+
+def _record_and_transcribe(seconds: int) -> tuple[bool, str | tuple[str, str]]:
+    """(ok, (text, lang)-or-error). Blocking; called from a worker thread."""
     fd, wav = tempfile.mkstemp(prefix="pip-listen-", suffix=".wav")
     os.close(fd)
     try:
@@ -136,14 +151,16 @@ def _record_and_transcribe(seconds: int) -> tuple[bool, str]:
         if rec.returncode != 0:
             return False, f"arecord failed: {(rec.stderr or '').strip()[:200]}"
 
-        cmd = [WHISPER_BIN, "-m", WHISPER_MODEL, "-f", wav, "-nt", "-np", "-l", "en"]
+        lang_args = ["-l", "auto"] if WHISPER_MULTILINGUAL else ["-l", "en"]
+        cmd = [WHISPER_BIN, "-m", WHISPER_MODEL, "-f", wav, "-nt", *lang_args]
         try:
             out = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         except (subprocess.TimeoutExpired, OSError) as exc:
             return False, f"whisper failed: {exc}"
         if out.returncode != 0:
             return False, f"whisper failed: {(out.stderr or '').strip()[:200]}"
-        return True, clean_transcript(out.stdout or "")
+        lang = parse_lang(out.stderr) if WHISPER_MULTILINGUAL else "en"
+        return True, (clean_transcript(out.stdout or ""), lang or "en")
     finally:
         try:
             os.unlink(wav)
@@ -170,7 +187,8 @@ async def listen(request: Request):
         ok, result = await asyncio.to_thread(_record_and_transcribe, seconds)
     if not ok:
         return _fail(result)
-    return {"text": result, "ms": _ms(started)}
+    text, lang = result
+    return {"text": text, "lang": lang, "ms": _ms(started)}
 
 
 # --- /see --------------------------------------------------------------------
@@ -286,6 +304,65 @@ async def see(request: Request):
     return {"text": result, "ms": _ms(started)}
 
 
+# --- /search -----------------------------------------------------------------
+
+
+SEARCH_TIMEOUT_S = 12
+MAX_SEARCH_RESULTS = 8
+
+
+def _search_available() -> bool:
+    try:
+        import ddgs  # noqa: F401, PLC0415
+
+        return True
+    except ImportError:
+        return False
+
+
+def _run_search(query: str, max_results: int) -> tuple[bool, list | str]:
+    """(ok, results-or-error). Blocking; called from a worker thread."""
+    try:
+        from ddgs import DDGS  # noqa: PLC0415
+    except ImportError:
+        return False, "ddgs is not installed on the cortex"
+    try:
+        with DDGS(timeout=SEARCH_TIMEOUT_S) as client:
+            hits = list(client.text(query, max_results=max_results))
+    except Exception as exc:  # the library raises its own exception types
+        return False, f"search failed: {exc}"
+    results = [
+        {
+            "title": (h.get("title") or "").strip(),
+            "snippet": (h.get("body") or "").strip(),
+            "url": (h.get("href") or "").strip(),
+        }
+        for h in hits
+        if isinstance(h, dict)
+    ]
+    return True, results
+
+
+@app.post("/search")
+async def search(request: Request):
+    payload = await _body(request)
+    query = str(payload.get("query") or "").strip()
+    if not query:
+        return JSONResponse(status_code=400, content={"error": "empty query"})
+    try:
+        max_results = int(payload.get("max_results", 4))
+    except (TypeError, ValueError):
+        max_results = 4
+    max_results = max(1, min(MAX_SEARCH_RESULTS, max_results))
+
+    started = time.monotonic()
+    async with _search_lock:
+        ok, results = await asyncio.to_thread(_run_search, query, max_results)
+    if not ok:
+        return _fail(str(results))
+    return {"results": results, "ms": _ms(started)}
+
+
 # --- /health -----------------------------------------------------------------
 
 
@@ -309,11 +386,15 @@ def _vlm_up() -> bool:
 
 @app.get("/health")
 async def health():
-    whisper, vlm, camera, mic = await asyncio.gather(
+    whisper, vlm, camera, mic, searchable = await asyncio.gather(
         asyncio.to_thread(lambda: _bin_ok(WHISPER_BIN) and _bin_ok(WHISPER_MODEL)),
         asyncio.to_thread(_vlm_up),
         asyncio.to_thread(_camera_present),
         asyncio.to_thread(_mic_present),
+        asyncio.to_thread(_search_available),
     )
-    # `ok` says the cortex process answered; the four flags say what it can do.
-    return {"ok": True, "whisper": whisper, "vlm": vlm, "camera": camera, "mic": mic}
+    # `ok` says the cortex process answered; the flags say what it can do.
+    return {
+        "ok": True, "whisper": whisper, "vlm": vlm,
+        "camera": camera, "mic": mic, "search": searchable,
+    }

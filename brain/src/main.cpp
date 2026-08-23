@@ -54,6 +54,7 @@ struct Config {
     int chirp_gap_ms = 5000;
     int senses_poll_ms = 10000;
     int llm_timeout_s = 90;
+    int max_tokens = 200;      // per model turn; thinking models want ~1500
 };
 
 void print_usage(FILE* out) {
@@ -62,7 +63,7 @@ void print_usage(FILE* out) {
         "                  [--llm URL] [--model NAME] [--llm2 URL]\n"
         "                  [--cortex URL] [--voice URL] [--tour] [--listen-seconds N]\n"
         "                  [--hot-c F] [--night-cap N] [--chirp-gap-ms N]\n"
-        "                  [--senses-poll-ms N] [--llm-timeout-s N] [--help]\n"
+        "                  [--senses-poll-ms N] [--llm-timeout-s N] [--max-tokens N] [--help]\n"
         "\n"
         "  --link DEV        UART to the body, e.g. /dev/ttyAMA0 (events and audio)\n"
         "  --baud N          link speed, default 921600\n"
@@ -150,6 +151,10 @@ bool parse_args(int argc, char** argv, Config& cfg) {
             int n; if (!parse_int(v, n)) return fail(a + " needs a number");
             if (n < 100) return fail(a + " must be at least 100");
             cfg.senses_poll_ms = n;
+        } else if (a == "--max-tokens") {
+            int n; if (!parse_int(v, n)) return fail(a + " needs a number");
+            if (n < 1) return fail(a + " must be at least 1");
+            cfg.max_tokens = n;
         } else if (a == "--llm-timeout-s") {
             int n; if (!parse_int(v, n)) return fail(a + " needs a number");
             if (n < 0) return fail(a + " must not be negative");
@@ -230,6 +235,7 @@ int main(int argc, char** argv) {
     jcfg.model = cfg.model;
     jcfg.llm2_url = cfg.llm2_url;
     jcfg.timeout_s = cfg.llm_timeout_s;
+    jcfg.max_tokens = cfg.max_tokens;
 
     Brain brain(bcfg, body, policy, log, jcfg,
                 cortex.enabled() ? &cortex : nullptr,

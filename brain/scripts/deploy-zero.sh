@@ -18,6 +18,7 @@ LLM2=http://pi5.local:8081
 CORTEX=http://orin-desktop.local:8090
 VOICE=http://pi5.local:8091
 MODEL=Qwen2.5-3B-Instruct
+MAXTOK=200
 PORT=8080
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -28,6 +29,7 @@ while [ $# -gt 0 ]; do
     --cortex) CORTEX=$2; shift 2;;
     --voice) VOICE=$2; shift 2;;
     --model) MODEL=$2; shift 2;;
+    --max-tokens) MAXTOK=$2; shift 2;;
     --listen-port) PORT=$2; shift 2;;
     --host) HOST=$2; shift 2;;
     --bin) BIN=$2; shift 2;;
@@ -46,7 +48,7 @@ EXEC="%h/pip-brain/pip-brain"
 EXEC="$EXEC --listen-port $PORT"
 [ -n "$LLM" ] && EXEC="$EXEC --llm $LLM"
 [ -n "$LLM2" ] && EXEC="$EXEC --llm2 $LLM2"
-EXEC="$EXEC --model $MODEL"
+EXEC="$EXEC --model $MODEL --max-tokens $MAXTOK"
 [ -n "$CORTEX" ] && EXEC="$EXEC --cortex $CORTEX"
 [ -n "$VOICE" ] && EXEC="$EXEC --voice $VOICE"
 

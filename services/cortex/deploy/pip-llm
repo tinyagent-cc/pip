@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Runs ON the Jetson. Points llama-text (:8081) at another GGUF and restarts it.
+#
+#   pip-llm                    prints the current model and the aliases
+#   pip-llm qwen2.5-3b         the shipped default
+#   pip-llm qwen3-4b           Qwen3-4B-Instruct-2507 (edge model, no thinking)
+#   pip-llm qwen3-4b-thinking  Qwen3-4B-Thinking-2507 (reasoning; slower answers,
+#                              give the brain --max-tokens 1500 or the thought
+#                              gets cut mid-sentence)
+#   pip-llm /path/to/model.gguf [extra llama-server args...]
+set -euo pipefail
+MODELS="$HOME/models"
+ENVF="$HOME/.config/pip/llama-text.env"
+
+alias_path() {
+  case "$1" in
+    qwen2.5-3b)        echo "$MODELS/Qwen2.5-3B-Instruct-Q4_K_M.gguf";;
+    qwen3-4b)          echo "$MODELS/Qwen3-4B-Instruct-2507-Q4_K_M.gguf";;
+    qwen3-4b-thinking) echo "$MODELS/Qwen3-4B-Thinking-2507-Q4_K_M.gguf";;
+    *)                 echo "$1";;
+  esac
+}
+
+if [ $# -eq 0 ]; then
+  echo "current: $(grep -s '^LLAMA_MODEL=' "$ENVF" | cut -d= -f2- || echo 'unit default (qwen2.5-3b)')"
+  echo "aliases: qwen2.5-3b qwen3-4b qwen3-4b-thinking, or any .gguf path"
+  exit 0
+fi
+
+MODEL="$(alias_path "$1")"; shift
+[ -f "$MODEL" ] || { echo "no model at $MODEL" >&2; exit 1; }
+mkdir -p "$(dirname "$ENVF")"
+{ echo "LLAMA_MODEL=$MODEL"; echo "LLAMA_EXTRA=$*"; } > "$ENVF"
+systemctl --user restart llama-text.service
+echo "restarting llama-text with $(basename "$MODEL")${*:+ ($*)} ..."
+for _ in $(seq 1 120); do
+  if curl -sf -m 2 http://127.0.0.1:8081/health >/dev/null 2>&1; then
+    echo "up: $(curl -s -m 3 http://127.0.0.1:8081/v1/models | head -c 200)"
+    exit 0
+  fi
+  sleep 2
+done
+echo "TIMEOUT: llama-text never came up; journal:" >&2
+systemctl --user status llama-text --no-pager -l | tail -15 >&2
+exit 1

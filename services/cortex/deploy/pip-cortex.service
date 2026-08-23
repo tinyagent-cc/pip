@@ -10,7 +10,7 @@ Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
 Environment=PIP_ALSA_DEVICE=plughw:2,0
 Environment=PIP_WHISPER_BIN=%h/tools/whisper.cpp/build/bin/whisper-cli
-Environment=PIP_WHISPER_MODEL=%h/tools/whisper.cpp/models/ggml-base.en.bin
+Environment=PIP_WHISPER_MODEL=%h/tools/whisper.cpp/models/ggml-base.bin
 Environment=PIP_CAMERA=/dev/video0
 Environment=PIP_FRAME_W=1280
 Environment=PIP_FRAME_H=720

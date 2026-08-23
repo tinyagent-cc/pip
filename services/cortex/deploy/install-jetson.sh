@@ -36,6 +36,9 @@ if [ -f "$HERE/pip-cortex.service" ]; then
   CORTEX_UNIT=1
 fi
 
+install -m 0755 "$HERE/pip-llm" "$HOME/bin/pip-llm" 2>/dev/null || {
+  mkdir -p "$HOME/bin"; install -m 0755 "$HERE/pip-llm" "$HOME/bin/pip-llm"; }
+
 systemctl --user daemon-reload
 systemctl --user enable --now llama-text.service llama-vlm.service
 [ "$CORTEX_UNIT" = 1 ] && systemctl --user enable --now pip-cortex.service
