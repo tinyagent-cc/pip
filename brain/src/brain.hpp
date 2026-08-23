@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -44,6 +45,10 @@ public:
     // Same thing, but the log says the event was staged rather than felt.
     // Scenes use it so the tour runs with nobody at the desk.
     void inject(const std::string& event);
+    // How many times this event reached the brain, however it arrived: from
+    // the body, from inject(), or raised by the senses poller. Scenes use it
+    // to tell "nobody pressed it" from "somebody did".
+    uint64_t event_count(const std::string& name) const;
     json health() const;
     json log_tail(size_t n) const;
     // Blocks until the queue is drained and the worker is parked back in its
@@ -71,6 +76,7 @@ private:
     void poll_senses();
     void record_recent(const std::string& name, int64_t t_ms);
     void refresh_services();
+    void count_event(const std::string& name);
 
     BrainConfig cfg_;
     IBody& body_;
@@ -90,6 +96,7 @@ private:
     bool stop_ = false;
     bool busy_ = false;  // true while the worker is processing (event or senses poll)
 
+    std::map<std::string, uint64_t> counts_;
     std::deque<std::pair<std::string, int64_t>> recent_;  // name, t_ms; oldest first, capped by cfg_.recent_events
     Senses last_senses_{};
     bool has_senses_ = false;

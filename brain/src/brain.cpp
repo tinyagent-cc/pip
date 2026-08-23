@@ -45,6 +45,7 @@ bool Brain::post_event(const json& body) {
         log_.note("post_event: unknown event " + name);
         return false;
     }
+    count_event(name);
     {
         std::lock_guard<std::mutex> g(m_);
         queue_.push_back({name, now_ms(), false});
@@ -56,11 +57,23 @@ bool Brain::post_event(const json& body) {
 void Brain::inject(const std::string& event) {
     if (!is_known_event(event)) { log_.note("inject: unknown event " + event); return; }
     log_.note("simulated event " + event);
+    count_event(event);
     {
         std::lock_guard<std::mutex> g(m_);
         queue_.push_back({event, now_ms(), true});
     }
     cv_.notify_all();
+}
+
+void Brain::count_event(const std::string& name) {
+    std::lock_guard<std::mutex> g(m_);
+    ++counts_[name];
+}
+
+uint64_t Brain::event_count(const std::string& name) const {
+    std::lock_guard<std::mutex> g(m_);
+    auto it = counts_.find(name);
+    return it == counts_.end() ? 0 : it->second;
 }
 
 void Brain::record_recent(const std::string& name, int64_t t_ms) {
@@ -74,6 +87,9 @@ void Brain::set_scene_name(const std::string& name) {
         std::lock_guard<std::mutex> g(m_);
         scene_ = name;
     }
+    // Both halves of the protocol: the scene command tells the body which
+    // script is running, the HUD field puts the name on the strip.
+    body_.scene(name);
     HudFields f;
     f.scene = name;
     body_.hud(f);
@@ -133,7 +149,10 @@ void Brain::poll_senses() {
     } else {
         senses_fail_logged_ = false;
     }
-    reflex_.on_senses(s, now_ms());
+    // The poller raises temp.hot inside the reflex engine, so it never passes
+    // through post_event; count it here or the fever scene cannot tell that
+    // the chip really did get warm.
+    if (reflex_.on_senses(s, now_ms())) count_event("temp.hot");
     refresh_services();
 }
 
