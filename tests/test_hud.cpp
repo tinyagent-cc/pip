@@ -9,6 +9,9 @@ static void run() {
     Hud::fmt_us(0, b, sizeof b); CHECK_STREQ(b, "0us");
     Hud::fmt_us(999, b, sizeof b); CHECK_STREQ(b, "999us");
     Hud::fmt_us(1234, b, sizeof b); CHECK_STREQ(b, "1.2ms");
+    Hud::fmt_us(99999, b, sizeof b); CHECK_STREQ(b, "99.9ms");
+    Hud::fmt_us(614181, b, sizeof b); CHECK_STREQ(b, "614ms");
+    Hud::fmt_us(1450000, b, sizeof b); CHECK_STREQ(b, "1.4s");
     Hud::fmt_us(-1, b, sizeof b); CHECK_STREQ(b, "--");
     Hud::fmt_ms(5800, b, sizeof b); CHECK_STREQ(b, "5.8s");
     Hud::fmt_ms(850, b, sizeof b); CHECK_STREQ(b, "850ms");

@@ -26,7 +26,11 @@ void Hud::set_senses(float lux, bool night, float temp_c, bool wire, bool wifi) 
 void Hud::fmt_us(long us, char* out, size_t cap) {
     if (us < 0) { std::snprintf(out, cap, "--"); return; }
     if (us < 1000) { std::snprintf(out, cap, "%ldus", us); return; }
-    std::snprintf(out, cap, "%ld.%ldms", us / 1000, (us % 1000) / 100);
+    if (us < 100000) { std::snprintf(out, cap, "%ld.%ldms", us / 1000, (us % 1000) / 100); return; }
+    // Past 100 ms (HTTP path, or a stalled wire) the decimal buys nothing and the stats
+    // line must stay under 22 characters to fit the panel.
+    if (us < 1000000) { std::snprintf(out, cap, "%ldms", us / 1000); return; }
+    std::snprintf(out, cap, "%ld.%lds", us / 1000000, (us % 1000000) / 100000);
 }
 void Hud::fmt_ms(long ms, char* out, size_t cap) {
     if (ms < 0) { std::snprintf(out, cap, "--"); return; }
