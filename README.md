@@ -58,6 +58,17 @@ the longest leg, one short leg to GND. Lights: common anode, so COM goes to 3V3 
 
 `PIP_LITE` needs no wiring: a bare Pico 2 W on USB.
 
+Bench signs, learned the hard way:
+- Pico 2 W has no power LED; the firmware blinks the onboard green LED at 1 Hz once the main
+  loop runs. Not blinking = boot stuck before the loop.
+- Boot lines print before USB serial is up and are lost; `pip: event ...` lines on a button
+  press carry lux and temp. `lux=-1.0` = VEML7700 not found at boot (SDA pin 6, SCL pin 7;
+  re-probed only on reboot). `wifi down status=-2` = SSID not seen (2.4 GHz only), `-3` = bad
+  password.
+- Display dark = LED (backlight) pin not on 3V3. White = init never arrived: signal wires
+  CS 22, SCK 24, SDI 25, DC 26, RESET 27, or the panel was re-powered after boot, which needs
+  a reboot (`picotool reboot -f`).
+
 WiFi credentials: `scripts/wifi-from-mac.sh` writes the Mac's current network and its
 keychain password into the git-ignored `firmware/config.h` (asks for the password if the
 keychain says no). Nothing is printed and nothing is committed.
