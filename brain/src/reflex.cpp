@@ -54,8 +54,73 @@ void Reflex::install_rules() {
             return "express=alert led=" + std::to_string(r) + ",0,0"; })).build();
 }
 
+// Guardrail rules match on the "call-N" facts tool_call_facts() asserts for
+// the model's tool calls (post-response, pre-dispatch). They run through
+// rx_.outcome() the same way reflex rules run through body_ calls; the
+// middleware applies whatever vetoes/replace_args they queued once run()
+// returns.
 void Reflex::install_guardrails() {
-    // Task 4 installs the guardrail rules; nothing to register yet.
+    auto& eng = rx_.engine();
+
+    // night-led-cap: cap any LED channel over the night cap. policy_.clamp()
+    // already folds in the night flag, so a day-time call clamps to the same
+    // value and no replace_arg is queued.
+    eng.add_rule("night-led-cap").when(std::string("?c"), std::string("tool"), std::string("led"))
+        .then([this](rete::ReteEngine& engine, const rete::Bindings& b) {
+            Timer t;
+            std::string id = std::get<std::string>(b.at("?c"));
+            auto idx_wmes = engine.query(rete::Value(id), rete::Value(std::string("index")), std::nullopt);
+            if (idx_wmes.empty()) return;
+            int idx = static_cast<int>(std::get<int64_t>(idx_wmes[0]->value));
+
+            std::string origs, caps;
+            for (const char* k : {"r", "g", "b"}) {
+                auto arg_wmes = engine.query(rete::Value(id), rete::Value(std::string("arg:") + k), std::nullopt);
+                if (arg_wmes.empty()) continue;
+                int v = 0;
+                if (auto* iv = std::get_if<int64_t>(&arg_wmes[0]->value)) v = static_cast<int>(*iv);
+                else if (auto* dv = std::get_if<double>(&arg_wmes[0]->value)) v = static_cast<int>(*dv);
+                int capped = policy_.clamp(v);
+                if (!origs.empty()) { origs += ","; caps += ","; }
+                origs += std::to_string(v); caps += std::to_string(capped);
+                if (capped != v) rx_.outcome().replace_arg(idx, k, capped);
+            }
+            log_.reflex("night-led-cap", t.us(), origs.empty() ? "-" : origs + " -> " + caps);
+        }).build();
+
+    // chirp-rate: only the earliest tool call (lowest index) in a batch is
+    // checked against the real rate limit; any other chirp call in the same
+    // batch is vetoed outright. The engine does not fire matches in
+    // assertion order for a single-condition rule with more than one match
+    // (verified empirically), so the decision has to key off the call's
+    // index rather than which fires first.
+    eng.add_rule("chirp-rate").when(std::string("?c"), std::string("tool"), std::string("chirp"))
+        .then([this](rete::ReteEngine& engine, const rete::Bindings& b) {
+            Timer t;
+            std::string id = std::get<std::string>(b.at("?c"));
+            auto idx_wmes = engine.query(rete::Value(id), rete::Value(std::string("index")), std::nullopt);
+            if (idx_wmes.empty()) return;
+            int idx = static_cast<int>(std::get<int64_t>(idx_wmes[0]->value));
+
+            auto chirp_wmes = engine.query(std::nullopt, rete::Value(std::string("tool")), rete::Value(std::string("chirp")));
+            int min_idx = idx;
+            for (auto& w : chirp_wmes) {
+                auto other_idx = engine.query(w->identifier, rete::Value(std::string("index")), std::nullopt);
+                if (other_idx.empty()) continue;
+                if (auto* iv = std::get_if<int64_t>(&other_idx[0]->value))
+                    min_idx = std::min(min_idx, static_cast<int>(*iv));
+            }
+
+            if (idx != min_idx) {
+                rx_.outcome().veto(idx, "chirp rate limit");
+                log_.reflex("chirp-rate", t.us(), "vetoed idx=" + std::to_string(idx) + " (batched)");
+            } else if (!policy_.chirp_allowed(now_ms())) {
+                rx_.outcome().veto(idx, "chirp rate limit");
+                log_.reflex("chirp-rate", t.us(), "vetoed idx=" + std::to_string(idx));
+            } else {
+                log_.reflex("chirp-rate", t.us(), "allowed idx=" + std::to_string(idx));
+            }
+        }).build();
 }
 
 tiny_agent::MiddlewareFn Reflex::guardrail_middleware() {
