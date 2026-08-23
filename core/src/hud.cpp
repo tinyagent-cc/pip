@@ -28,6 +28,8 @@ constexpr uint8_t ICONS[][8] = {
     {0b00111000, 0b00111000, 0b00111000, 0b00111000, 0b00010000, 0b00111000, 0b00010000, 0b00111000},
     // lightning bolt
     {0b00001100, 0b00011000, 0b00110000, 0b01111100, 0b00011000, 0b00110000, 0b01100000, 0b01000000},
+    // shield: wide top tapering to a point
+    {0b11111111, 0b11111111, 0b11111111, 0b01111110, 0b01111110, 0b00111100, 0b00111100, 0b00011000},
 };
 
 void draw_icon(pip::Framebuffer& fb, int x, int y, int idx, int scale, uint16_t colour) {
@@ -47,6 +49,7 @@ Hud::CaptionStyle Hud::caption_style(const char* scene) {
     if (starts(scene, "tool say")) return {TOOL, ICON_SPEAK};
     if (starts(scene, "tool ")) return {TOOL, ICON_GEAR};
     if (starts(scene, "rete ")) return {RETE, ICON_BOLT};
+    if (starts(scene, "guard ")) return {GUARD, ICON_SHIELD};
     if (starts(scene, "ears ")) return {EARS, ICON_MIC};
     return {FG, ICON_NONE};
 }

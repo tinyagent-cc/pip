@@ -21,6 +21,17 @@ inline json tool_call_reply(const std::string& name, const json& args, int ptok 
             {"tool_calls", json::array({json{{"id","call_1"},{"type","function"},{"function", json{{"name",name},{"arguments",args.dump()}}}}})}}}}})},
         {"usage", json{{"prompt_tokens",ptok},{"completion_tokens",ctok},{"total_tokens",ptok+ctok}}}};
 }
+// Several tool calls in one assistant turn, [{name, args}, ...].
+inline json tool_calls_reply(const std::vector<std::pair<std::string, json>>& calls, int ptok = 40, int ctok = 20) {
+    json tcs = json::array();
+    int i = 0;
+    for (auto& [name, args] : calls)
+        tcs.push_back(json{{"id","call_" + std::to_string(++i)},{"type","function"},{"function", json{{"name",name},{"arguments",args.dump()}}}});
+    return json{{"id","x"},{"object","chat.completion"},{"model","fake"},
+        {"choices", json::array({json{{"index",0},{"finish_reason","tool_calls"},{"message", json{{"role","assistant"},{"content",nullptr},
+            {"tool_calls", tcs}}}}})},
+        {"usage", json{{"prompt_tokens",ptok},{"completion_tokens",ctok},{"total_tokens",ptok+ctok}}}};
+}
 inline json text_reply(const std::string& text, int ptok = 60, int ctok = 8) {
     return json{{"id","x"},{"object","chat.completion"},{"model","fake"},
         {"choices", json::array({json{{"index",0},{"finish_reason","stop"},{"message", json{{"role","assistant"},{"content",text}}}}})},

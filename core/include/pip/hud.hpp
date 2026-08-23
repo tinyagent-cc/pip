@@ -26,8 +26,9 @@ public:
     // Machinery ticker palette: each part of tiny_agent gets a colour and an 8x8
     // pixel icon, so the caption reads like a status emoji even on film.
     static constexpr uint16_t AGENT = rgb565(235, 110, 235), TOOL = rgb565(90, 200, 245),
-                              RETE = rgb565(255, 200, 70), EARS = rgb565(120, 230, 120);
-    enum Icon : int8_t { ICON_NONE = -1, ICON_ROBOT = 0, ICON_GEAR, ICON_SEARCH, ICON_EYE, ICON_SPEAK, ICON_MIC, ICON_BOLT };
+                              RETE = rgb565(255, 200, 70), EARS = rgb565(120, 230, 120),
+                              GUARD = rgb565(255, 120, 90);
+    enum Icon : int8_t { ICON_NONE = -1, ICON_ROBOT = 0, ICON_GEAR, ICON_SEARCH, ICON_EYE, ICON_SPEAK, ICON_MIC, ICON_BOLT, ICON_SHIELD };
     struct CaptionStyle { uint16_t colour; int8_t icon; };
     // Pure prefix classifier: "deep-agent", "tool <name>", "rete <rule>",
     // "ears <what>" get their colour + icon; anything else is a scene name in FG.

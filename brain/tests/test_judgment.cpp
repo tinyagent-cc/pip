@@ -87,6 +87,9 @@ TEST_CASE("strip_think removes thought blocks, closed or not") {
     CHECK(Judgment::strip_think("A<think>x</think>B<think>y</think>C") == "ABC");
     CHECK(Judgment::strip_think("<think>ran out of tok") == "");
     CHECK(Judgment::strip_think("no thoughts here") == "no thoughts here");
+    CHECK(Judgment::strip_markdown("**Ubuntu 26.04** is `new`") == "Ubuntu 26.04 is new");
+    CHECK(Judgment::strip_markdown("## Heading\nplain *bold*") == "Heading\nplain bold");
+    CHECK(Judgment::strip_markdown("no markdown at all") == "no markdown at all");
 }
 
 TEST_CASE("the say tool speaks through the speaker and is not repeated at the end") {
@@ -103,6 +106,26 @@ TEST_CASE("the say tool speaks through the speaker and is not repeated at the en
     REQUIRE(calls.size() == 2);
     CHECK(calls[0] == "say:A reflex is a rule, not a thought.");
     CHECK(calls[1].rfind("speak:", 0) == 0);          // said once, spoken once
+}
+
+TEST_CASE("say in the same turn as search is vetoed until the facts are in") {
+    FakeLlm llm;
+    llm.replies = {tool_calls_reply({{"search", json{{"query","latest LTS"}}}, {"say", json{{"text","It is 22.04."}}}}),
+                   tool_call_reply("say", json{{"text","It is 26.04."}}),
+                   text_reply("It is 26.04.")};
+    Rig r; FakeCortex cortex; Cortex c(cortex.url());
+    JudgmentConfig jcfg; jcfg.llm_url = llm.url(); jcfg.model = "fake"; jcfg.timeout_s = 5;
+    Judgment j(jcfg, r.body, r.rx, r.log, nullptr, &c);
+    Verdict v = j.react("button.hold", Context{});
+    // The premature say never reached the body; the informed one did.
+    auto a = acts(r.body.snapshot());
+    REQUIRE(a.size() == 1);
+    CHECK(a[0] == "say:It is 26.04.");
+    CHECK(v.reply == "It is 26.04.");
+    CHECK(hud_has(r.body.snapshot(), "guard say-veto"));
+    bool vetoed = false;
+    for (auto& e : r.log.tail(20)) if (e["kind"] == "reflex" && e["name"] == "say-needs-facts") vetoed = true;
+    CHECK(vetoed);
 }
 
 TEST_CASE("the look tool hands the model what the cortex saw") {

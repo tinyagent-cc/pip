@@ -4,6 +4,9 @@
 #   pip-llm                    prints the current model and the aliases
 #   pip-llm qwen2.5-3b         the shipped default
 #   pip-llm qwen3-4b           Qwen3-4B-Instruct-2507 (edge model, no thinking)
+#   pip-llm granite-4.0-micro  Granite 4.0 micro 3B (benched 2026-08-24: fastest 5/5)
+#   pip-llm qwen3.5-4b          Qwen3.5-4B (5/5 but 2-3x slower per turn)
+#   pip-llm nemotron3-nano-4b   Nemotron3 Nano 4B (5/5, middling speed)
 #   pip-llm qwen3-4b-thinking  Qwen3-4B-Thinking-2507 (reasoning; slower answers,
 #                              give the brain --max-tokens 1500 or the thought
 #                              gets cut mid-sentence)
@@ -17,6 +20,9 @@ alias_path() {
     qwen2.5-3b)        echo "$MODELS/Qwen2.5-3B-Instruct-Q4_K_M.gguf";;
     qwen3-4b)          echo "$MODELS/Qwen3-4B-Instruct-2507-Q4_K_M.gguf";;
     qwen3-4b-thinking) echo "$MODELS/Qwen3-4B-Thinking-2507-Q4_K_M.gguf";;
+    qwen3.5-4b)        echo "$MODELS/Qwen3.5-4B-Q4_K_M.gguf";;
+    granite-4.0-micro) echo "$MODELS/granite-4.0-micro-Q4_K_M.gguf";;
+    nemotron3-nano-4b) echo "$MODELS/NVIDIA-Nemotron3-Nano-4B-Q4_K_M.gguf";;
     *)                 echo "$1";;
   esac
 }

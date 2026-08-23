@@ -1,4 +1,5 @@
 #include "judgment.hpp"
+#include <algorithm>
 #include <tiny_agent/agents/create.hpp>
 #include <tiny_agent/init_chat_model.hpp>
 #include <tiny_agent/middleware/model_fallback.hpp>
@@ -65,8 +66,9 @@ void Judgment::ticker(const std::string& s) {
 }
 
 void Judgment::speak(const std::string& text) {
-    if (speaker_) speaker_->say(text, true, lang_);
-    else body_.say(text);
+    std::string plain = strip_markdown(text);   // the say tool is a leak path too
+    if (speaker_) speaker_->say(plain, true, lang_);
+    else body_.say(plain);
 }
 
 std::vector<DynamicTool> Judgment::tools(std::string& said) {
@@ -159,6 +161,20 @@ std::vector<DynamicTool> Judgment::tools(std::string& said) {
                  {"properties", {{"query", {{"type","string"}}}}},
                  {"required", {"query"}}}),
     };
+}
+
+// Models decorate despite "plain text only" (Granite bolds, others backtick).
+// The bubble font and the TTS can do nothing with markdown, so it goes here,
+// whatever mind is on the dial.
+std::string Judgment::strip_markdown(std::string text) {
+    std::string out; out.reserve(text.size());
+    for (size_t i = 0; i < text.size(); ++i) {
+        char c = text[i];
+        if (c == '*' || c == '`') continue;
+        if (c == '#' && (i == 0 || text[i-1] == '\n')) { while (i < text.size() && text[i] == '#') ++i; if (i < text.size() && text[i] == ' ') ++i; --i; continue; }
+        out += c;
+    }
+    return out;
 }
 
 std::string Judgment::strip_think(std::string text) {
@@ -268,7 +284,32 @@ Verdict Judgment::react(const std::string& trigger, const Context& ctx) {
         cfg.system_prompt = system_prompt();
         cfg.tools = tools(said);
         cfg.max_iterations = cfg_.max_iterations;
+        // A model that calls say in the same turn as search or look is
+        // answering before the facts arrive (Granite does, on the bench of
+        // 2026-08-24: "Ubuntu 22.04" said in parallel with the search that
+        // would have corrected it). The guardrail drops that say; the loop
+        // continues, and the model says its answer next turn, informed.
+        MiddlewareFn facts_guard = [this](std::vector<Message>& msgs, Next next) -> LLMResponse {
+            LLMResponse r = next(msgs);
+            if (r.message.has_tool_calls()) {
+                bool fresh = false, has_say = false;
+                for (auto& c : r.message.tool_calls) {
+                    if (c.name == "search" || c.name == "look") fresh = true;
+                    if (c.name == "say") has_say = true;
+                }
+                if (fresh && has_say) {
+                    auto& tc = r.message.tool_calls;
+                    tc.erase(std::remove_if(tc.begin(), tc.end(),
+                                            [](const ToolCall& c) { return c.name == "say"; }),
+                             tc.end());
+                    log_.reflex("say-needs-facts", 0, "vetoed say before search/look results");
+                    ticker("guard say-veto");
+                }
+            }
+            return r;
+        };
         cfg.middlewares.push_back(usage);
+        cfg.middlewares.push_back(facts_guard);
         cfg.middlewares.push_back(reflex_.guardrail_middleware());
         if (!cfg_.llm2_url.empty() && !forced) {
             // AnyChat holds an httplib::Client and is not copyable, so the
@@ -296,7 +337,7 @@ Verdict Judgment::react(const std::string& trigger, const Context& ctx) {
         llm.timeout_seconds = cfg_.timeout_s;
         auto agent = make_agent(std::move(llm), cfg);
 
-        v.reply = strip_think(agent.run(user_prompt(ctx)));
+        v.reply = strip_markdown(strip_think(agent.run(user_prompt(ctx))));
         if (forced) v.mind = '5';
         else v.mind = primary_answered ? 'J' : (cfg_.llm2_url.empty() ? 'J' : '5');
         // The closing sentence is spoken too, unless the model already said

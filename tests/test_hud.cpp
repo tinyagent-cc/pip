@@ -89,6 +89,8 @@ static void run() {
     CHECK_EQ((int)Hud::caption_style("tool express").icon, (int)Hud::ICON_GEAR);
     CHECK_EQ(Hud::caption_style("rete press-wink").colour, Hud::RETE);
     CHECK_EQ((int)Hud::caption_style("rete press-wink").icon, (int)Hud::ICON_BOLT);
+    CHECK_EQ(Hud::caption_style("guard say-veto").colour, Hud::GUARD);
+    CHECK_EQ((int)Hud::caption_style("guard say-veto").icon, (int)Hud::ICON_SHIELD);
     CHECK_EQ(Hud::caption_style("ears whisper").colour, Hud::EARS);
     CHECK_EQ((int)Hud::caption_style("ears whisper").icon, (int)Hud::ICON_MIC);
     CHECK_EQ(Hud::caption_style("fallback").colour, Hud::FG);       // plain scene names stay plain

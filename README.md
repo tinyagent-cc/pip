@@ -206,6 +206,35 @@ reasoning (redeploy the brain with `--max-tokens 1500` for it, or the thought
 is cut mid-sentence; `<think>` blocks are stripped and never spoken either
 way). qwen2.5-3b is the fallback-tier model the Pi 5 still runs.
 
+Bench of 2026-08-24 (five probes each -- must-call-search, parallel tools,
+tool-result follow-through, French, no-search-on-smalltalk -- then a live run
+through the whole robot):
+
+| Model | Score | Probe latency | Gen tok/s | Size |
+|---|---|---|---|---|
+| granite-4.0-micro 3B | 5/5 | 2.2-4.4 s | 19.9 | 1.9 GB |
+| Qwen3-4B-Instruct-2507 | 5/5 | 1.6-4.7 s | 16.8 | 2.4 GB |
+| Nemotron3-Nano-4B | 5/5 | 7.4-9.4 s | -- | 2.6 GB |
+| Qwen3.5-4B | 5/5 | 7.9-14.5 s | -- | 2.4 GB |
+
+Granite is the loaded default since that bench: fastest live judge (6.6 s vs
+9.1 s on the same question), smallest footprint. Qwen3-4B is one
+`pip-llm qwen3-4b` away and has the most live-demo mileage. Nemotron 3.5
+Lightning, the catalog's agent model, is a 30B-A3B MoE -- ~16 GB at Q4, it
+cannot fit this box. No model name is hardcoded anywhere: the brain sends a
+label to a single-model server, `pip-llm` owns the dial, and
+`PIP_LLM_API_KEY` lets the same brain point at a hosted frontier endpoint
+when we want to compare against the big ones.
+
+The bench also caught a behaviour bug worth more than the numbers: Granite
+called `say` in the same turn as `search`, answering from stale memory
+before the results existed. That is now a guardrail (`say-needs-facts`):
+a say arriving alongside search or look is vetoed, the loop continues, and
+the model answers next turn from the actual results. The ticker shows it as
+a coral shield, `guard say-veto`. Markdown is stripped from every spoken
+reply the same model-agnostic way (`strip_markdown`), because models bold
+things no bubble font can render.
+
 Why Qwen and not Gemma: both Gemma 3n variants were put on this bench
 (2026-08-23, Q4_K_M through the same llama-server). E4B (4.5 GB) cannot
 load next to the vision and whisper services on the 7.6 GB Jetson -- the
