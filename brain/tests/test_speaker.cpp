@@ -23,7 +23,8 @@ TEST_CASE("Cortex listens and sees against the fake Jetson") {
     CHECK(c.ok());
     auto heard = c.listen(4);
     REQUIRE(heard.has_value());
-    CHECK(*heard == "what do you see");
+    CHECK(heard->text == "what do you see");
+    CHECK(heard->lang == "en");
     auto seen = c.see("who is there?");
     REQUIRE(seen.has_value());
     CHECK(*seen == "a desk with a keyboard");

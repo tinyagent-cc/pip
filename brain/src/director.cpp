@@ -105,6 +105,7 @@ void Director::scene_night() {
 // Nobody has to power anything down on camera.
 void Director::scene_fallback() {
     caption("fallback");
+    brain_.warm_fallback();     // prime the Pi 5's prompt cache while the intro plays
     say("Cortex offline. The next answer comes from the Pi five.");
     brain_.set_force_fallback(true);
     say("Hold me and ask something.");

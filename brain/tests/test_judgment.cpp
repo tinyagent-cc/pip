@@ -36,7 +36,7 @@ TEST_CASE("hold: agent calls express through the body tool, usage and latency ar
     CHECK(tokens);
     auto reqs = llm.requests_snapshot();
     REQUIRE(reqs.size() == 2);
-    CHECK(reqs[0]["tools"].size() == 6);                 // express, chirp, led, senses, say, look
+    CHECK(reqs[0]["tools"].size() == 7);                 // express, chirp, led, senses, say, look, search
     std::string sys = reqs[0]["messages"][0]["content"];
     CHECK(sys.find("Pip") != std::string::npos);
     std::string user = reqs[0]["messages"][1]["content"];
@@ -47,9 +47,33 @@ TEST_CASE("hold: agent calls express through the body tool, usage and latency ar
 TEST_CASE("the transcript the cortex heard goes into the prompt; silence is said so") {
     Context ctx;
     ctx.transcript = "what is a reflex?";
-    CHECK(Judgment::user_prompt(ctx).find("Transcript: \"what is a reflex?\"") != std::string::npos);
+    CHECK(Judgment::user_prompt(ctx).find("They just said: \"what is a reflex?\"") != std::string::npos);
+    ctx.lang = "fr";
+    CHECK(Judgment::user_prompt(ctx).find("(language: fr)") != std::string::npos);
     Context quiet;
     CHECK(Judgment::user_prompt(quiet).find("held your button and said nothing") != std::string::npos);
+}
+
+TEST_CASE("earlier exchanges land in the prompt, oldest first") {
+    Context ctx;
+    ctx.transcript = "and the second one?";
+    ctx.dialogue = {{"name a planet", "Mars, the rusty one."}};
+    auto p = Judgment::user_prompt(ctx);
+    auto a = p.find("They said: \"name a planet\"");
+    auto b = p.find("You replied: \"Mars, the rusty one.\"");
+    auto c = p.find("They just said: \"and the second one?\"");
+    REQUIRE(a != std::string::npos);
+    REQUIRE(b != std::string::npos);
+    REQUIRE(c != std::string::npos);
+    CHECK(a < b);
+    CHECK(b < c);
+}
+
+TEST_CASE("strip_think removes thought blocks, closed or not") {
+    CHECK(Judgment::strip_think("<think>hmm</think>The answer.") == "The answer.");
+    CHECK(Judgment::strip_think("A<think>x</think>B<think>y</think>C") == "ABC");
+    CHECK(Judgment::strip_think("<think>ran out of tok") == "");
+    CHECK(Judgment::strip_think("no thoughts here") == "no thoughts here");
 }
 
 TEST_CASE("the say tool speaks through the speaker and is not repeated at the end") {

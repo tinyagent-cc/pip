@@ -67,6 +67,8 @@ public:
     // can put the real number in its caption.
     int led_capped(int r, int g, int b);
     void set_force_fallback(bool on) { judgment_.force_fallback(on); }
+    // Prime llama-server on the Pi 5 with the shared prompt prefix; detached.
+    void warm_fallback() { judgment_.warm_fallback_async(); }
 
 private:
     struct QueuedEvent { std::string name; int64_t t_ms; bool simulated; };
@@ -98,6 +100,7 @@ private:
 
     std::map<std::string, uint64_t> counts_;
     std::deque<std::pair<std::string, int64_t>> recent_;  // name, t_ms; oldest first, capped by cfg_.recent_events
+    std::deque<std::pair<std::string, std::string>> dialogue_;  // {heard, replied}; oldest first, worker thread only
     Senses last_senses_{};
     bool has_senses_ = false;
     bool senses_fail_logged_ = false;  // logs a poll failure on state change only, not every tick

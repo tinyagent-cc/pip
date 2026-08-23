@@ -15,17 +15,17 @@ Speaker::~Speaker() {
     if (th_.joinable()) th_.join();
 }
 
-void Speaker::say(const std::string& text, bool also_speak) {
+void Speaker::say(const std::string& text, bool also_speak, const std::string& lang) {
     if (text.empty()) return;
     body_.say(text);                       // the bubble is instant; the voice catches up
     if (!also_speak || !voice_.enabled()) return;
     {
         std::lock_guard<std::mutex> g(m_);
         if (queue_.size() >= QUEUE_CAP) {
-            log_.note("speaker: dropped queued line \"" + queue_.front() + "\" (queue full)");
+            log_.note("speaker: dropped queued line \"" + queue_.front().text + "\" (queue full)");
             queue_.pop_front();
         }
-        queue_.push_back(text);
+        queue_.push_back({text, lang});
     }
     cv_.notify_all();
 }
@@ -36,12 +36,12 @@ void Speaker::loop() {
         idle_cv_.notify_all();
         cv_.wait(lock, [this] { return stop_ || !queue_.empty(); });
         if (stop_) break;
-        std::string text = std::move(queue_.front());
+        Line line = std::move(queue_.front());
         queue_.pop_front();
         speaking_ = true;
         lock.unlock();
         try {
-            auto pcm = voice_.tts(text);
+            auto pcm = voice_.tts(line.text, line.lang);
             if (!pcm) {
                 voice_ok_.store(false);
                 log_.note("speaker: voice failed (" + voice_.last_error() + ")");

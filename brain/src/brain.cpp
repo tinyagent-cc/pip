@@ -171,11 +171,11 @@ void Brain::process_event(const std::string& name, int64_t t_ms) {
     if (name != "button.hold" || !judgment_.enabled()) return;
 
     bool cortex_up = cortex_ && cortex_->enabled();
-    std::string transcript;
+    std::string transcript, lang;
     if (cortex_up) {
         auto heard = cortex_->listen(cfg_.listen_seconds);
         cortex_up = heard.has_value();
-        if (heard) transcript = *heard;
+        if (heard) { transcript = heard->text; lang = heard->lang; }
         else log_.note("cortex listen failed: " + cortex_->last_error());
         HudFields f;
         f.cortex = cortex_up;
@@ -186,6 +186,8 @@ void Brain::process_event(const std::string& name, int64_t t_ms) {
 
     Context ctx;
     ctx.transcript = transcript;
+    ctx.lang = lang;
+    ctx.dialogue.assign(dialogue_.begin(), dialogue_.end());
     int64_t now = now_ms();
     bool have_senses;
     {
@@ -220,6 +222,12 @@ void Brain::process_event(const std::string& name, int64_t t_ms) {
     f.cortex = cortex_up;
     body_.hud(f);
     log_.note("judgment: " + v.reply);
+    // Pip remembers the exchange, so "what did I just ask you" works. Four
+    // exchanges is plenty for a desk chat and keeps the prompt small.
+    if (!transcript.empty() || !v.reply.empty()) {
+        dialogue_.emplace_back(transcript, v.reply);
+        while (dialogue_.size() > 4) dialogue_.pop_front();
+    }
     // A drop chirp is how a mute Pip admits it: either there was no answer at
     // all, or the last thing it tried to say never made it to the speaker.
     // The speaker's flag is read, not waited on -- the worker must not block

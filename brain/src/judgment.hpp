@@ -27,6 +27,9 @@ struct Context {
     std::vector<std::string> recent_events;
     Senses senses;
     std::string transcript;
+    std::string lang;             // language of the transcript ("en", "fr", ...); "" unknown
+    // Earlier exchanges, oldest first: {what the person said, what Pip replied}.
+    std::vector<std::pair<std::string, std::string>> dialogue;
 };
 
 // mind is who answered: 'J' the Jetson (the primary), '5' the Pi 5 (the
@@ -55,6 +58,16 @@ public:
     void force_fallback(bool on) { force_fallback_.store(on); }
     bool forced() const { return force_fallback_.load() && !cfg_.llm2_url.empty(); }
 
+    // Fire one request at the Pi 5 so llama-server caches the shared prompt
+    // prefix (system prompt + tool schemas) before the fallback scene asks for
+    // a real answer: 36.8 s of the 49.8 s cold run was that first prompt eval.
+    // Detached thread; a second call while one is in flight is a no-op.
+    void warm_fallback_async();
+
+    // Qwen3-style thinking models leak "<think>...</think>" ahead of the
+    // answer when the server does not strip it; Pip never speaks its thoughts.
+    static std::string strip_think(std::string text);
+
     static std::string system_prompt();
     static std::string user_prompt(const Context& ctx);
 
@@ -69,6 +82,8 @@ private:
     Speaker* speaker_;
     Cortex* cortex_;
     std::atomic<bool> force_fallback_{false};
+    std::atomic<bool> warm_inflight_{false};
+    std::string lang_;            // language of the exchange being reacted to
 };
 
 }  // namespace pip::brain

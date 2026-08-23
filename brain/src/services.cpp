@@ -41,27 +41,49 @@ std::string Cortex::last_error() const { std::lock_guard<std::mutex> g(m_); retu
 
 bool Cortex::ok() { return health(base_url_); }
 
-std::optional<std::string> Cortex::ask(const char* path, const std::string& body, int read_timeout_s) {
+std::optional<json> Cortex::ask(const char* path, const std::string& body, int read_timeout_s) {
     if (!enabled()) { set_error("cortex not configured"); return std::nullopt; }
     auto cli = make_client(base_url_, read_timeout_s);
     auto res = cli.Post(path, body, "application/json");
     if (!res || res->status != 200) { set_error(std::string(path) + ": " + http_error(res)); return std::nullopt; }
     auto j = json::parse(res->body, nullptr, false);
-    if (!j.is_object() || !j.contains("text") || !j["text"].is_string()) {
-        set_error(std::string(path) + ": reply had no text");
-        return std::nullopt;
-    }
+    if (!j.is_object()) { set_error(std::string(path) + ": unreadable reply"); return std::nullopt; }
     set_error("");
-    return j["text"].get<std::string>();
+    return j;
 }
 
 // The read timeout has to outlast the recording itself, so it grows with the
 // window the caller asked for.
-std::optional<std::string> Cortex::listen(int seconds) {
-    return ask("/listen", json{{"seconds", seconds}}.dump(), seconds + 10);
+std::optional<Heard> Cortex::listen(int seconds) {
+    auto j = ask("/listen", json{{"seconds", seconds}}.dump(), seconds + 10);
+    if (!j || !j->contains("text") || !(*j)["text"].is_string()) {
+        if (j) set_error("/listen: reply had no text");
+        return std::nullopt;
+    }
+    return Heard{(*j)["text"].get<std::string>(), j->value("lang", std::string())};
 }
 std::optional<std::string> Cortex::see(const std::string& question) {
-    return ask("/see", json{{"question", question}}.dump(), 25);
+    auto j = ask("/see", json{{"question", question}}.dump(), 25);
+    if (!j || !j->contains("text") || !(*j)["text"].is_string()) {
+        if (j) set_error("/see: reply had no text");
+        return std::nullopt;
+    }
+    return (*j)["text"].get<std::string>();
+}
+std::optional<std::string> Cortex::search(const std::string& query) {
+    auto j = ask("/search", json{{"query", query}, {"max_results", 4}}.dump(), 20);
+    if (!j || !j->contains("results") || !(*j)["results"].is_array()) {
+        if (j) set_error("/search: reply had no results");
+        return std::nullopt;
+    }
+    std::string out;
+    for (const auto& r : (*j)["results"]) {
+        if (!r.is_object()) continue;
+        if (!out.empty()) out += "\n";
+        out += r.value("title", std::string()) + ": " + r.value("snippet", std::string());
+    }
+    if (out.empty()) { set_error("/search: no hits"); return std::nullopt; }
+    return out;
 }
 
 Voice::Voice(std::string base_url) : base_url_(std::move(base_url)) {}
@@ -71,10 +93,12 @@ std::string Voice::last_error() const { std::lock_guard<std::mutex> g(m_); retur
 
 bool Voice::ok() { return health(base_url_); }
 
-std::optional<std::vector<int16_t>> Voice::tts(const std::string& text) {
+std::optional<std::vector<int16_t>> Voice::tts(const std::string& text, const std::string& lang) {
     if (!enabled()) { set_error("voice not configured"); return std::nullopt; }
     auto cli = make_client(base_url_, 15);
-    auto res = cli.Post("/tts", json{{"text", text}}.dump(), "application/json");
+    json req{{"text", text}};
+    if (!lang.empty()) req["lang"] = lang;
+    auto res = cli.Post("/tts", req.dump(), "application/json");
     if (!res || res->status != 200) { set_error("/tts: " + http_error(res)); return std::nullopt; }
     const std::string& b = res->body;
     // A trailing odd byte means a truncated reply; keep the whole samples and

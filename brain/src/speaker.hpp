@@ -29,7 +29,8 @@ public:
     // also_speak is false. Over QUEUE_CAP pending lines the oldest is dropped
     // with a log note: falling behind by five sentences means the demo has
     // moved on, and the newest line is the one worth hearing.
-    void say(const std::string& text, bool also_speak = true);
+    // lang picks the Piper voice ("en", "fr", "ar"); empty means default.
+    void say(const std::string& text, bool also_speak = true, const std::string& lang = "");
     bool busy() const;
     void wait_idle();
     bool last_voice_ok() const { return voice_ok_.load(); }
@@ -42,7 +43,8 @@ private:
     EventLog& log_;
     mutable std::mutex m_;
     std::condition_variable cv_, idle_cv_;
-    std::deque<std::string> queue_;
+    struct Line { std::string text; std::string lang; };
+    std::deque<Line> queue_;
     bool speaking_ = false;
     bool stop_ = false;
     std::atomic<bool> voice_ok_{true};

@@ -5,6 +5,7 @@
 #include <tiny_agent/providers/openai.hpp>
 #include <chrono>
 #include <cstdio>
+#include <thread>
 
 namespace pip::brain {
 using namespace tiny_agent;
@@ -19,7 +20,10 @@ std::string Judgment::system_prompt() {
            "chirp (rise, trill, drop, purr, boot, sad), set the led (channels 0-255), read your senses, "
            "say one short sentence out loud, and look through your camera. "
            "If the person asked a question, answer it in one or two short sentences with say; otherwise react to the event. "
-           "Work in at most two turns: first call all the tools you want at once (express, chirp, led, look), "
+           "Answer in the language the person spoke: English, French or Arabic. "
+           "If the question needs fresh facts (news, weather, prices, sport, anything after your training), "
+           "call search first and answer from the results. "
+           "Work in at most two turns: first call all the tools you want at once (express, chirp, led, look, search), "
            "then call say with your answer and stop. Use at most one express, one chirp and one led. "
            "Keep every sentence under 90 characters.";
 }
@@ -32,15 +36,26 @@ std::string Judgment::user_prompt(const Context& ctx) {
     std::snprintf(buf, sizeof buf, "\nSenses now: light_lux=%.1f temp_c=%.1f button=%s",
                   ctx.senses.light_lux, ctx.senses.temp_c, ctx.senses.button_down ? "down" : "up");
     s += buf;
-    if (!ctx.transcript.empty()) s += "\nTranscript: \"" + ctx.transcript + "\"";
-    else s += "\nSomeone held your button and said nothing.";
+    if (!ctx.dialogue.empty()) {
+        s += "\nThe conversation so far (oldest first):";
+        for (auto& [theirs, mine] : ctx.dialogue) {
+            if (!theirs.empty()) s += "\n- They said: \"" + theirs + "\"";
+            if (!mine.empty()) s += "\n- You replied: \"" + mine + "\"";
+        }
+    }
+    if (!ctx.transcript.empty()) {
+        s += "\nThey just said: \"" + ctx.transcript + "\"";
+        if (!ctx.lang.empty() && ctx.lang != "en") s += " (language: " + ctx.lang + ")";
+    } else {
+        s += "\nSomeone held your button and said nothing.";
+    }
     return s + "\nReact now.";
 }
 
 // Speech goes through the Speaker when there is one, so the worker thread is
 // never blocked on TTS; without one the bubble is all Pip can manage.
 void Judgment::speak(const std::string& text) {
-    if (speaker_) speaker_->say(text);
+    if (speaker_) speaker_->say(text, true, lang_);
     else body_.say(text);
 }
 
@@ -111,12 +126,79 @@ std::vector<DynamicTool> Judgment::tools(std::string& said) {
             json{{"type","object"},
                  {"properties", {{"question", {{"type","string"}}}}},
                  {"required", {"question"}}}),
+
+        DynamicTool::create("search", "Search the web (DuckDuckGo) for fresh facts",
+            [this](const json& p) -> json {
+                auto q = p.value("query", "");
+                log_.tool("search", q);
+                if (q.empty()) return json{{"results", "nothing to search for"}};
+                if (cortex_) {
+                    if (auto hits = cortex_->search(q)) return json{{"results", *hits}};
+                }
+                // Same shape as a blind look: words the model can pass on.
+                return json{{"results", "the web is out of reach right now"}};
+            },
+            json{{"type","object"},
+                 {"properties", {{"query", {{"type","string"}}}}},
+                 {"required", {"query"}}}),
     };
+}
+
+std::string Judgment::strip_think(std::string text) {
+    // Remove every <think>...</think> block, plus an unclosed trailing one
+    // (the model ran out of tokens mid-thought). Case-sensitive: that is how
+    // the models emit it.
+    for (;;) {
+        auto a = text.find("<think>");
+        if (a == std::string::npos) break;
+        auto b = text.find("</think>", a);
+        if (b == std::string::npos) { text.erase(a); break; }
+        text.erase(a, b + 8 - a);
+    }
+    // Trim what the removal left behind.
+    auto first = text.find_first_not_of(" \t\n\r");
+    if (first == std::string::npos) return "";
+    auto last = text.find_last_not_of(" \t\n\r");
+    return text.substr(first, last - first + 1);
+}
+
+// One cheap round trip to the fallback server with the exact system prompt
+// and tool schemas react() sends, so the shared prefix is in llama-server's
+// cache before the scene asks its real question. The tools are never run:
+// this calls the model directly, not the agent loop.
+void Judgment::warm_fallback_async() {
+    if (cfg_.llm2_url.empty()) return;
+    if (warm_inflight_.exchange(true)) return;
+    std::thread([this] {
+        try {
+            auto t0 = std::chrono::steady_clock::now();
+            std::string unused;
+            auto dts = tools(unused);
+            std::vector<ToolSchema> schemas;
+            schemas.reserve(dts.size());
+            for (auto& t : dts) schemas.push_back(t.schema);
+            OpenAIChat llm;
+            llm.model = cfg_.model;
+            llm.api_key = "";
+            llm.base_url = cfg_.llm2_url;
+            llm.temperature = cfg_.temperature;
+            llm.max_tokens = 1;
+            llm.timeout_seconds = cfg_.timeout_s;
+            std::vector<Message> msgs = {Message::system(system_prompt()), Message::user("warm-up")};
+            llm.chat(msgs, schemas);
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+            log_.note("fallback warmed in " + std::to_string(ms) + " ms");
+        } catch (const std::exception& e) {
+            log_.note(std::string("fallback warm-up failed: ") + e.what());
+        }
+        warm_inflight_.store(false);
+    }).detach();
 }
 
 Verdict Judgment::react(const std::string& trigger, const Context& ctx) {
     Verdict v;
     if (!enabled()) return v;
+    lang_ = ctx.lang;
     auto t_start = std::chrono::steady_clock::now();
     std::string said;                 // set by the say tool
     bool primary_answered = false;
@@ -195,7 +277,7 @@ Verdict Judgment::react(const std::string& trigger, const Context& ctx) {
         llm.timeout_seconds = cfg_.timeout_s;
         auto agent = make_agent(std::move(llm), cfg);
 
-        v.reply = agent.run(user_prompt(ctx));
+        v.reply = strip_think(agent.run(user_prompt(ctx)));
         if (forced) v.mind = '5';
         else v.mind = primary_answered ? 'J' : (cfg_.llm2_url.empty() ? 'J' : '5');
         // The closing sentence is spoken too, unless the model already said

@@ -21,19 +21,29 @@ public:
     std::atomic<bool> fail{false};
     std::atomic<int> delay_ms{0};
     std::string heard = "what do you see";
+    std::string lang = "en";
     std::string seen = "a desk with a keyboard";
 
     FakeCortex() {
         svr_.Post("/listen", [this](const httplib::Request& rq, httplib::Response& rs) {
             record("listen:" + rq.body);
             if (!reply_ok(rs)) return;
-            rs.set_content(json{{"text", heard}, {"ms", 1200}}.dump(), "application/json");
+            rs.set_content(json{{"text", heard}, {"lang", lang}, {"ms", 1200}}.dump(), "application/json");
         });
         svr_.Post("/see", [this](const httplib::Request& rq, httplib::Response& rs) {
             auto j = json::parse(rq.body, nullptr, false);
             record("see:" + (j.is_object() ? j.value("question", std::string()) : std::string()));
             if (!reply_ok(rs)) return;
             rs.set_content(json{{"text", seen}, {"ms", 900}}.dump(), "application/json");
+        });
+        svr_.Post("/search", [this](const httplib::Request& rq, httplib::Response& rs) {
+            auto j = json::parse(rq.body, nullptr, false);
+            record("search:" + (j.is_object() ? j.value("query", std::string()) : std::string()));
+            if (!reply_ok(rs)) return;
+            rs.set_content(json{{"results", json::array({
+                json{{"title", "Hit one"}, {"snippet", "first snippet"}, {"url", "https://a"}},
+                json{{"title", "Hit two"}, {"snippet", "second snippet"}, {"url", "https://b"}},
+            })}, {"ms", 800}}.dump(), "application/json");
         });
         svr_.Get("/health", [this](const httplib::Request&, httplib::Response& rs) {
             if (fail.load()) { rs.status = 500; return; }
