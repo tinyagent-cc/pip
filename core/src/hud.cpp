@@ -6,11 +6,10 @@
 namespace pip {
 namespace {
 constexpr int CAPTION_SCALE = 2;
-// The stats line is 1x, as the spec's "HUD strip (5x7 font, 1x)" says. At 2x the worst
-// case ("25C rfx 1.2ms jdg 850ms", 23 characters) is 274 px starting at x 76, which runs
-// 30 px off a 320 px panel; the caption and the link glyphs, which are the parts a camera
-// has to read from across a room, stay at 2x.
-constexpr int STATS_SCALE = 1;
+// The stats line is 2x too: 1x (the spec's first guess) is unreadable on film from a
+// 2.8" panel. Labels lose their space so the worst case ("25C rfx1.2ms jdg850ms", 21
+// characters, 250 px) still fits from x 64 on a 320 px panel next to a 40 px lux bar.
+constexpr int STATS_SCALE = 2;
 }
 
 void Hud::apply(const HudUpdate& u) {
@@ -83,7 +82,7 @@ Rect Hud::draw(Framebuffer& fb, bool force) {
         draw_disc(fb, MOON_CX + 5, MOON_CY - 1, 4, BG);
     }
     char line[48];
-    std::snprintf(line, sizeof line, "%sC rfx %s jdg %s", r.temp, r.us, r.ms);
+    std::snprintf(line, sizeof line, "%sC rfx%s jdg%s", r.temp, r.us, r.ms);
     draw_text(fb, TEXT_X, TEXT_Y, line, STATS_SCALE, FG);
 
     drawn_ = r;

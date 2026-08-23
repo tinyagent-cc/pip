@@ -19,7 +19,7 @@ struct HudState {
 class Hud {
 public:
     static constexpr int Y0 = 200, H = 40;
-    static constexpr int BAR_X = 6, BAR_Y = 222, BAR_W = 50, BAR_H = 10, MOON_CX = 62, MOON_CY = 227, TEXT_X = 76, TEXT_Y = 224;
+    static constexpr int BAR_X = 6, BAR_Y = 222, BAR_W = 40, BAR_H = 10, MOON_CX = 52, MOON_CY = 227, TEXT_X = 64, TEXT_Y = 221;
     static constexpr int CAPTION_X = 6, CAPTION_Y = 203, GLYPH_Y = 203, GLYPH_RIGHT = 6;
     static constexpr uint16_t BG = rgb565(6, 6, 12), FG = rgb565(200, 200, 215), DIM = rgb565(60, 60, 80),
                               OK = rgb565(60, 220, 120), WARN = rgb565(240, 180, 40);

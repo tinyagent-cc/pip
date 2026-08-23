@@ -57,19 +57,19 @@ static void run() {
     // Lux bar: full at 200 lux, empty at 0, and the moon only shows at night.
     h.set_senses(200.0f, false, 25.0f, true, true);
     h.draw(fb, false);
-    CHECK_EQ(fb.at(54, 227), Hud::OK);
+    CHECK_EQ(fb.at(44, 227), Hud::OK);
     CHECK_EQ(fb.at(256, 204), Hud::OK);            // 'W' wire, up now
-    CHECK_EQ(fb.at(62, 227), Hud::BG);             // no moon by day
+    CHECK_EQ(fb.at(52, 227), Hud::BG);             // no moon by day
     h.set_senses(0.0f, true, 25.0f, true, true);
     h.draw(fb, false);
-    CHECK_EQ(fb.at(54, 227), Hud::BG);             // bar empty
+    CHECK_EQ(fb.at(44, 227), Hud::BG);             // bar empty
     CHECK_EQ(fb.at(7, 227), Hud::BG);
-    CHECK_EQ(fb.at(62, 227), Hud::FG);             // moon
+    CHECK_EQ(fb.at(52, 227), Hud::FG);             // moon
     h.set_senses(20.0f, true, 25.0f, true, true);
     h.draw(fb, false);
     CHECK_EQ(fb.at(7, 227), Hud::OK);              // a low reading still shows something
     // Log scale, not linear: 20 lux of 200 fills well past a tenth of the bar.
-    CHECK_EQ(fb.at(30, 227), Hud::OK);
+    CHECK_EQ(fb.at(26, 227), Hud::OK);
     CHECK_EQ(fb.at(44, 227), Hud::BG);
 
     // A change too small to move a pixel does not cost an SPI push.
