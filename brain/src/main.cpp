@@ -1,5 +1,6 @@
 #include <httplib.h>
 #include <nlohmann/json.hpp>
+#include <cerrno>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
@@ -41,34 +42,92 @@ void print_usage(FILE* out) {
         "                  [--senses-poll-ms N] [--llm-timeout-s N] [--help]\n");
 }
 
-// Parses argv into cfg. On any problem (unknown flag, missing value, missing
-// --pip) it prints usage to stderr and returns false; the caller exits 2.
-// --help prints usage to stdout and exits 0 immediately.
+// strtol/strtod with a whole-string check: rejects "", "abc", and "12abc" alike.
+bool parse_int(const char* s, int& out) {
+    if (!s || !*s) return false;
+    char* end = nullptr;
+    errno = 0;
+    long v = std::strtol(s, &end, 10);
+    if (end == s || *end != '\0' || errno == ERANGE) return false;
+    out = static_cast<int>(v);
+    return true;
+}
+bool parse_double(const char* s, double& out) {
+    if (!s || !*s) return false;
+    char* end = nullptr;
+    errno = 0;
+    double v = std::strtod(s, &end);
+    if (end == s || *end != '\0' || errno == ERANGE) return false;
+    out = v;
+    return true;
+}
+
+// Parses argv into cfg. On any problem (unknown flag, missing or malformed
+// value, missing --pip) it prints an error plus usage to stderr and returns
+// false; the caller exits 2. --help prints usage to stdout and exits 0
+// immediately.
 bool parse_args(int argc, char** argv, Config& cfg) {
+    auto fail = [](const std::string& msg) {
+        std::fprintf(stderr, "pip-brain: %s\n", msg.c_str());
+        print_usage(stderr);
+        return false;
+    };
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--help") { print_usage(stdout); std::exit(0); }
+        // A value that itself looks like a flag ("--foo") means the real
+        // value was omitted, not that "--foo" is the value.
         auto need_value = [&]() -> const char* {
             if (i + 1 >= argc) return nullptr;
+            std::string next = argv[i + 1];
+            if (next.rfind("--", 0) == 0) return nullptr;
             return argv[++i];
         };
-        const char* v = nullptr;
-        bool known = true;
-        if (a == "--pip") { if ((v = need_value())) cfg.pip_url = v; }
-        else if (a == "--listen-port") { if ((v = need_value())) cfg.listen_port = std::atoi(v); }
-        else if (a == "--llm") { if ((v = need_value())) cfg.llm_url = v; }
-        else if (a == "--model") { if ((v = need_value())) cfg.model = v; }
-        else if (a == "--llm2") { if ((v = need_value())) cfg.llm2_url = v; }
-        else if (a == "--hot-c") { if ((v = need_value())) cfg.hot_c = std::atof(v); }
-        else if (a == "--night-cap") { if ((v = need_value())) cfg.night_cap = std::atoi(v); }
-        else if (a == "--chirp-gap-ms") { if ((v = need_value())) cfg.chirp_gap_ms = std::atoi(v); }
-        else if (a == "--senses-poll-ms") { if ((v = need_value())) cfg.senses_poll_ms = std::atoi(v); }
-        else if (a == "--llm-timeout-s") { if ((v = need_value())) cfg.llm_timeout_s = std::atoi(v); }
-        else known = false;
-        if (!known) { std::fprintf(stderr, "pip-brain: unknown flag %s\n", a.c_str()); print_usage(stderr); return false; }
-        if (!v) { std::fprintf(stderr, "pip-brain: %s needs a value\n", a.c_str()); print_usage(stderr); return false; }
+        if (a == "--pip") {
+            const char* v = need_value(); if (!v) return fail(a + " needs a value");
+            cfg.pip_url = v;
+        } else if (a == "--listen-port") {
+            const char* v = need_value(); if (!v) return fail(a + " needs a value");
+            int n; if (!parse_int(v, n)) return fail(a + " needs a number");
+            if (n < 1 || n > 65535) return fail(a + " must be between 1 and 65535");
+            cfg.listen_port = n;
+        } else if (a == "--llm") {
+            const char* v = need_value(); if (!v) return fail(a + " needs a value");
+            cfg.llm_url = v;
+        } else if (a == "--model") {
+            const char* v = need_value(); if (!v) return fail(a + " needs a value");
+            cfg.model = v;
+        } else if (a == "--llm2") {
+            const char* v = need_value(); if (!v) return fail(a + " needs a value");
+            cfg.llm2_url = v;
+        } else if (a == "--hot-c") {
+            const char* v = need_value(); if (!v) return fail(a + " needs a value");
+            double f; if (!parse_double(v, f)) return fail(a + " needs a number");
+            cfg.hot_c = f;
+        } else if (a == "--night-cap") {
+            const char* v = need_value(); if (!v) return fail(a + " needs a value");
+            int n; if (!parse_int(v, n)) return fail(a + " needs a number");
+            cfg.night_cap = n;
+        } else if (a == "--chirp-gap-ms") {
+            const char* v = need_value(); if (!v) return fail(a + " needs a value");
+            int n; if (!parse_int(v, n)) return fail(a + " needs a number");
+            if (n < 0) return fail(a + " must not be negative");
+            cfg.chirp_gap_ms = n;
+        } else if (a == "--senses-poll-ms") {
+            const char* v = need_value(); if (!v) return fail(a + " needs a value");
+            int n; if (!parse_int(v, n)) return fail(a + " needs a number");
+            if (n < 0) return fail(a + " must not be negative");
+            cfg.senses_poll_ms = n;
+        } else if (a == "--llm-timeout-s") {
+            const char* v = need_value(); if (!v) return fail(a + " needs a value");
+            int n; if (!parse_int(v, n)) return fail(a + " needs a number");
+            if (n < 0) return fail(a + " must not be negative");
+            cfg.llm_timeout_s = n;
+        } else {
+            return fail("unknown flag " + a);
+        }
     }
-    if (cfg.pip_url.empty()) { std::fprintf(stderr, "pip-brain: --pip is required\n"); print_usage(stderr); return false; }
+    if (cfg.pip_url.empty()) return fail("--pip is required");
     return true;
 }
 
@@ -116,11 +175,16 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, handle_stop_signal);
     std::signal(SIGTERM, handle_stop_signal);
 
+    if (!svr.bind_to_port("0.0.0.0", cfg.listen_port)) {
+        std::fprintf(stderr, "pip-brain: failed to bind 0.0.0.0:%d (port in use?)\n", cfg.listen_port);
+        return 1;
+    }
+
     log.note("pip-brain listening on :" + std::to_string(cfg.listen_port) + " body=" + cfg.pip_url +
               " llm=" + (cfg.llm_url.empty() ? "off" : cfg.llm_url));
     bool body_up = body.senses().ok;
     log.note(std::string("startup body probe: ") + (body_up ? "ok" : "no reply yet"));
 
-    svr.listen("0.0.0.0", cfg.listen_port);
+    svr.listen_after_bind();
     return 0;
 }
