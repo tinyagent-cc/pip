@@ -78,5 +78,6 @@ void link_poll(Body& body, void (*on_audio)(const uint8_t* pcm, uint16_t len)) {
 }
 
 bool link_alive(uint32_t now_ms) { return g_have_frame && (now_ms - g_last_good_ms) < 2000; }
+void link_count_audio_drop() { ++g_audio_dropped; }
 LinkStats link_stats() { return LinkStats{g_dec.frames(), g_dec.bad(), g_audio_dropped}; }
 }
