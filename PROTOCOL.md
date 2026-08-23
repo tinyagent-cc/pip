@@ -126,6 +126,8 @@ The brain treats events as facts, not commands.
 
 ```
 POST /event {"event": "..."}  -> 200 {"ok": true}
+     A button.hold may carry "transcript" and "lang": a typed question that
+     stands in for the microphone (the bench, or a demo with no mic in reach).
                                   400 {"ok": false, "error": "bad event"}  (not an object, or missing/unknown "event")
                               known events: button.press, button.hold, button.release,
                               light.low, light.high, temp.hot

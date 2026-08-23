@@ -179,6 +179,33 @@ which costs seconds and tokens instead. It runs on a Pi Zero 2 W, built on
 a Pi 5 and deployed over SSH. Endpoints, flags, build, and deploy:
 `brain/README.md`.
 
+The judgment holds a conversation, not single shots: the last four exchanges
+ride into every prompt, so "what did I just ask you?" works. Its tools are
+express, chirp, led, senses, say, look (camera + VLM) and search (DuckDuckGo
+through the cortex, for anything after the model's training). It answers in
+the language it was spoken to -- English, French or Arabic -- and the Pi 5
+picks the matching Piper voice (lessac, siwis, kareem). A typed question can
+stand in for the mic: `POST /event {"event":"button.hold","transcript":"...",
+"lang":"fr"}`.
+
+### The thinking model is a dial, not a constant
+
+The Jetson's text model is whatever `pip-llm` last pointed llama-server at:
+
+```
+ssh orin@orin-desktop.local 'pip-llm'                    # show current + aliases
+ssh orin@orin-desktop.local 'pip-llm qwen3-4b'           # Qwen3-4B-Instruct-2507 (the default)
+ssh orin@orin-desktop.local 'pip-llm qwen3-4b-thinking'  # Qwen3-4B-Thinking-2507
+ssh orin@orin-desktop.local 'pip-llm qwen2.5-3b'         # the old, smaller one
+```
+
+Measured 2026-08-23 on the bench (typed questions, wire up): qwen3-4b answers
+a search-backed question in 8.5 to 12 s and calls its tools in parallel;
+qwen3-4b-thinking got a three-step arithmetic riddle right in 32 s of silent
+reasoning (redeploy the brain with `--max-tokens 1500` for it, or the thought
+is cut mid-sentence; `<think>` blocks are stripped and never spoken either
+way). qwen2.5-3b is the fallback-tier model the Pi 5 still runs.
+
 ## Hardware and wiring
 
 | Part | Role | Pico 2 W pins |

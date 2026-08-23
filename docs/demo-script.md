@@ -151,6 +151,37 @@ This is the shot to leave running while you tidy up, and it is what
 are one of the acceptance criteria, so run it three times and keep the `/log`
 output.
 
+### 8. Conversation: memory, the web, and three languages
+
+No scene needed; these are freeform holds (or typed questions when the mic is
+out of reach: `curl -X POST http://<brain>:8080/event -d
+'{"event":"button.hold","transcript":"...","lang":"fr"}'`).
+
+- **Memory.** Ask "what is the latest OpenShift version?", wait for the
+  answer, then hold again and ask "what did I just ask you?". Pip carries the
+  last four exchanges. Bench 2026-08-23: "You asked about the latest Red Hat
+  OpenShift version, which is 4.22..."
+- **The web.** Anything after the model's training makes it call `search`
+  (DuckDuckGo through the cortex): news, weather, versions, sport. The log
+  shows `tool search <query>`. 8.5 to 12 s with the search inside.
+- **Languages.** Speak French or Arabic and Pip answers in kind, with the
+  matching voice (whisper auto-detects, Piper siwis/kareem speaks). "Présente-
+  toi en une phrase" came back as "Je suis Pip, ton petit compagnon de
+  bureau..." in the French voice.
+
+### 9. Swap the mind on camera
+
+```
+ssh orin@orin-desktop.local 'pip-llm qwen3-4b-thinking'
+# redeploy the brain with --max-tokens 1500, then hold and ask a riddle
+ssh orin@orin-desktop.local 'pip-llm qwen3-4b'
+```
+
+The riddle take: "3 boxes, each has twice the apples of the one before, the
+first has 2 -- how many in total?" The thinking model reasons silently for
+about 32 s and says "Total apples: 14". Good footage for the "judgment is a
+dial" point; switch back to `qwen3-4b` after the take.
+
 ## When something is wrong
 
 | Symptom | What the HUD shows | One command |
