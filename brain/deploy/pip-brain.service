@@ -2,7 +2,7 @@
 Description=Pip brain (reflex rules + tiny_agent judgment)
 
 [Service]
-ExecStart=%h/pip-brain/pip-brain --pip http://192.168.1.110 --listen-port 8080 --llm http://pi5.local:8081 --model Qwen2.5-3B-Instruct
+ExecStart=%h/pip-brain/pip-brain --link /dev/ttyAMA0 --pip http://192.168.1.110 --listen-port 8080 --llm http://orin-desktop.local:8081 --llm2 http://pi5.local:8081 --model Qwen2.5-3B-Instruct --cortex http://orin-desktop.local:8090 --voice http://pi5.local:8091
 Restart=always
 RestartSec=3
 RestartPreventExitStatus=1 2
