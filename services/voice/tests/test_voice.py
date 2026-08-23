@@ -34,8 +34,8 @@ class FakeVoice:
 @pytest.fixture
 def fake_voice(monkeypatch):
     fake = FakeVoice()
-    monkeypatch.setattr(voice_mod, "_voice", None)
-    monkeypatch.setattr(voice_mod, "_load_voice", lambda: fake)
+    monkeypatch.setattr(voice_mod, "_voices", {})
+    monkeypatch.setattr(voice_mod, "_load_voice", lambda path=None: fake)
     return fake
 
 
@@ -144,8 +144,34 @@ def test_resample_of_nothing_is_nothing():
 def test_health_shape(client):
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json() == {
-        "ok": True,
-        "voice": "en_US-lessac-medium",
-        "sample_rate": 16000,
-    }
+    body = r.json()
+    assert body["ok"] is True
+    assert body["voice"] == "en_US-lessac-medium"
+    assert body["sample_rate"] == 16000
+    assert "en" in body["langs"]
+
+
+# --- per-language voices -----------------------------------------------------
+
+
+def test_unknown_lang_falls_back_to_the_default_voice():
+    assert voice_mod.voice_path_for("xx") == voice_mod.VOICE_PATH
+    assert voice_mod.voice_path_for("") == voice_mod.VOICE_PATH
+
+
+def test_tts_lang_picks_the_mapped_voice(monkeypatch, fake_voice):
+    loaded = []
+
+    def load(path=None):
+        loaded.append(path)
+        return FakeVoice()
+
+    monkeypatch.setattr(voice_mod, "_load_voice", load)
+    monkeypatch.setattr(voice_mod, "_voices", {})
+    monkeypatch.setitem(voice_mod.VOICE_PATHS, "fr", "/tmp/fr-voice.onnx")
+    client = TestClient(voice_mod.app)
+    assert client.post("/tts", json={"text": "Bonjour.", "lang": "fr"}).status_code == 200
+    assert loaded == ["/tmp/fr-voice.onnx"]
+    # Same lang again: the loaded voice is reused, not reloaded.
+    assert client.post("/tts", json={"text": "Encore.", "lang": "fr"}).status_code == 200
+    assert loaded == ["/tmp/fr-voice.onnx"]

@@ -118,6 +118,7 @@ def test_listen_happy_path(client, monkeypatch):
     assert r.status_code == 200
     body = r.json()
     assert body["text"] == "Hello Pip, how are you?"
+    assert body["lang"] == "en"          # the .en model never auto-detects
     assert isinstance(body["ms"], int) and body["ms"] >= 0
     assert seen["model"] == cortex.WHISPER_MODEL
     assert seen["wav"].endswith(".wav")
@@ -362,6 +363,7 @@ def test_health_reports_parts_down_but_stays_ok(client, monkeypatch):
         "vlm": False,
         "camera": False,
         "mic": False,
+        "search": cortex._search_available(),
     }
 
 
@@ -378,7 +380,7 @@ def test_health_keys_are_exactly_the_contract(client, monkeypatch):
         FakeHttp(on_get=lambda url, **kw: response(200, json={})),
     )
     keys = set(client.get("/health").json())
-    assert keys == {"ok", "whisper", "vlm", "camera", "mic"}
+    assert keys == {"ok", "whisper", "vlm", "camera", "mic", "search"}
 
 
 # --- text cleaning -----------------------------------------------------------
@@ -398,3 +400,99 @@ def test_health_keys_are_exactly_the_contract(client, monkeypatch):
 )
 def test_clean_transcript(raw, want):
     assert cortex.clean_transcript(raw) == want
+
+
+# --- language detection ------------------------------------------------------
+
+
+def test_parse_lang_reads_whisper_stderr():
+    assert cortex.parse_lang("whisper_full: auto-detected language: fr (p = 0.94)") == "fr"
+    assert cortex.parse_lang("no such line") == ""
+    assert cortex.parse_lang("") == ""
+
+
+def test_multilingual_listen_uses_auto_and_reports_the_language(client, monkeypatch):
+    monkeypatch.setattr(cortex, "WHISPER_MULTILINGUAL", True)
+    seen = {}
+
+    def whisper(cmd):
+        seen["lang"] = arg_after(cmd, "-l")
+        return FakeCompleted(
+            0, stdout="Bonjour Pip.",
+            stderr="auto-detected language: fr (p = 0.91)",
+        )
+
+    monkeypatch.setattr(
+        cortex.subprocess,
+        "run",
+        fake_runner({"arecord": good_arecord, "whisper-cli": whisper}),
+    )
+    r = client.post("/listen", json={"seconds": 3})
+    assert r.status_code == 200
+    assert r.json()["text"] == "Bonjour Pip."
+    assert r.json()["lang"] == "fr"
+    assert seen["lang"] == "auto"
+
+
+# --- /search -----------------------------------------------------------------
+
+
+class FakeDDGS:
+    hits = [
+        {"title": "A", "body": "first", "href": "https://a"},
+        {"title": "B", "body": "second", "href": "https://b"},
+    ]
+    raise_exc = None
+    seen = {}
+
+    def __init__(self, timeout=None):
+        FakeDDGS.seen["timeout"] = timeout
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def text(self, query, max_results=4):
+        FakeDDGS.seen["query"] = query
+        FakeDDGS.seen["max_results"] = max_results
+        if FakeDDGS.raise_exc:
+            raise FakeDDGS.raise_exc
+        return list(FakeDDGS.hits)
+
+
+@pytest.fixture
+def fake_ddgs(monkeypatch):
+    import sys as _sys
+    import types as _types
+
+    mod = _types.ModuleType("ddgs")
+    mod.DDGS = FakeDDGS
+    monkeypatch.setitem(_sys.modules, "ddgs", mod)
+    FakeDDGS.raise_exc = None
+    FakeDDGS.seen = {}
+    return FakeDDGS
+
+
+def test_search_happy_path(client, fake_ddgs):
+    r = client.post("/search", json={"query": "red hat", "max_results": 2})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["results"] == [
+        {"title": "A", "snippet": "first", "url": "https://a"},
+        {"title": "B", "snippet": "second", "url": "https://b"},
+    ]
+    assert fake_ddgs.seen["query"] == "red hat"
+    assert fake_ddgs.seen["max_results"] == 2
+
+
+def test_search_empty_query_is_400(client, fake_ddgs):
+    assert client.post("/search", json={}).status_code == 400
+
+
+def test_search_failure_is_503(client, fake_ddgs):
+    fake_ddgs.raise_exc = RuntimeError("rate limited")
+    r = client.post("/search", json={"query": "x"})
+    assert r.status_code == 503
+    assert "rate limited" in r.json()["error"]
