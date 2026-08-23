@@ -1,6 +1,7 @@
 #pragma once
 #include <httplib.h>
 #include <nlohmann/json.hpp>
+#include <atomic>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -35,10 +36,20 @@ inline json text_reply(const std::string& text, int ptok = 60, int ctok = 8) {
 class FakeLlm {
 public:
     std::vector<json> replies;
+    // A server that is up but broken. tiny_agent turns a non-200 into an
+    // APIError, which is what model_fallback catches, so this is how a test
+    // forces the fallback path without waiting on a connection refusal.
+    std::atomic<bool> fail{false};
 
     FakeLlm() {
         svr_.Post("/v1/chat/completions", [this](const httplib::Request& rq, httplib::Response& rs) {
             json req = json::parse(rq.body, nullptr, false);
+            if (fail.load()) {
+                { std::lock_guard<std::mutex> g(m_); requests_.push_back(req.is_discarded() ? json::object() : req); }
+                rs.status = 500;
+                rs.set_content(R"({"error":"model is down"})", "application/json");
+                return;
+            }
             json reply;
             {
                 std::lock_guard<std::mutex> g(m_);

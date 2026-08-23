@@ -1,6 +1,7 @@
 #pragma once
 #include <httplib.h>
 #include <nlohmann/json.hpp>
+#include <algorithm>
 #include <mutex>
 #include <set>
 #include <stdexcept>
@@ -19,6 +20,14 @@ struct FakeBody : IBody {
         calls.push_back("express:" + e); return !fail; }
     bool chirp(const std::string& n) override { std::lock_guard<std::mutex> g(m); calls.push_back("chirp:" + n); return !fail; }
     bool led(int r, int gg, int b) override { std::lock_guard<std::mutex> g(m); calls.push_back("led:" + std::to_string(r) + "," + std::to_string(gg) + "," + std::to_string(b)); return !fail; }
+    bool say(const std::string& t) override { std::lock_guard<std::mutex> g(m); calls.push_back("say:" + t.substr(0, std::min(t.size(), SAY_MAX))); return !fail; }
+    bool hud(const HudFields& f) override { std::lock_guard<std::mutex> g(m); calls.push_back("hud:" + f.to_json().dump()); return !fail; }
+    bool scene(const std::string& n) override { std::lock_guard<std::mutex> g(m); calls.push_back("scene:" + n); return !fail; }
+    // Records the sample count, not the samples: every test so far cares about
+    // how much audio reached the body, not what it sounded like.
+    bool speak(const std::vector<int16_t>& pcm) override { std::lock_guard<std::mutex> g(m); calls.push_back("speak:" + std::to_string(pcm.size())); return !fail; }
+    bool ping() override { std::lock_guard<std::mutex> g(m); calls.push_back("ping"); return !fail; }
+    bool alive() const override { return !fail; }
     Senses senses() override { std::lock_guard<std::mutex> g(m); calls.push_back("senses"); Senses s = next_senses; if (fail) s.ok = false; return s; }
     std::vector<std::string> snapshot() { std::lock_guard<std::mutex> g(m); return calls; }
     // Takes the mutex so a test can rewrite the fixture's readings while the
@@ -35,8 +44,9 @@ public:
     // or malformed payload.
     std::string senses_override_body;
     FakePip() {
-        static const std::set<std::string> emotions{"idle","happy","sleepy","thinking","alert","wink"};
-        static const std::set<std::string> chirps{"rise","trill","drop","purr"};
+        static const std::set<std::string> emotions{"idle","happy","sleepy","thinking","alert","wink",
+                                                    "surprised","sad","listening","talking"};
+        static const std::set<std::string> chirps{"rise","trill","drop","purr","boot","sad"};
         svr_.Post("/express", [this](const httplib::Request& rq, httplib::Response& rs) {
             auto j = nlohmann::json::parse(rq.body, nullptr, false);
             std::string e = j.is_object() ? j.value("emotion", "") : "";
@@ -53,6 +63,25 @@ public:
             auto j = nlohmann::json::parse(rq.body, nullptr, false);
             record("led:" + std::to_string(j.value("r", -1)) + "," + std::to_string(j.value("g", -1)) + "," + std::to_string(j.value("b", -1)));
             rs.set_content(R"({"ok":true})", "application/json");
+        });
+        svr_.Post("/say", [this](const httplib::Request& rq, httplib::Response& rs) {
+            auto j = nlohmann::json::parse(rq.body, nullptr, false);
+            record("say:" + (j.is_object() ? j.value("text", std::string()) : std::string()));
+            rs.set_content(R"({"ok":true})", "application/json");
+        });
+        svr_.Post("/hud", [this](const httplib::Request& rq, httplib::Response& rs) {
+            auto j = nlohmann::json::parse(rq.body, nullptr, false);
+            record("hud:" + (j.is_object() ? j.dump() : std::string("?")));
+            rs.set_content(R"({"ok":true})", "application/json");
+        });
+        svr_.Post("/scene", [this](const httplib::Request& rq, httplib::Response& rs) {
+            auto j = nlohmann::json::parse(rq.body, nullptr, false);
+            record("scene:" + (j.is_object() ? j.value("name", std::string()) : std::string()));
+            rs.set_content(R"({"ok":true})", "application/json");
+        });
+        svr_.Get("/ping", [this](const httplib::Request&, httplib::Response& rs) {
+            record("ping");
+            rs.set_content(R"({"pong":true})", "application/json");
         });
         svr_.Get("/senses", [this](const httplib::Request&, httplib::Response& rs) {
             record("senses");

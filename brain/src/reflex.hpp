@@ -12,6 +12,9 @@ class Reflex {
 public:
     Reflex(IBody& body, Policy& policy, EventLog& log);
     int on_event(const std::string& name, int64_t now_ms);
+    // Wall time of the last on_event call, the number the HUD shows next to
+    // the judgment's milliseconds.
+    int64_t last_event_us() const { return last_us_; }
     bool on_senses(const Senses& s, int64_t now_ms);
     tiny_agent::MiddlewareFn guardrail_middleware();
     tiny_agent::middleware::ReflexEngine& rx() { return rx_; }
@@ -25,6 +28,7 @@ private:
     std::atomic<bool> dark_{false};
     bool hot_ = false;
     int64_t now_ms_ = 0;           // set by on_event for the actions
+    int64_t last_us_ = 0;          // duration of the last on_event, for the HUD
     int fired_ = 0;                // incremented by every action
 };
 }

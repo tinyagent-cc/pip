@@ -31,8 +31,14 @@ void Reflex::install_rules() {
             std::string d = body_.express("wink") ? "express=wink" : "express=wink(FAILED)";
             if (policy_.chirp_allowed(now_ms_)) d += body_.chirp("rise") ? " chirp=rise" : " chirp=rise(FAILED)";
             return d; })).build();
-    eng.add_rule("hold-think").when(std::string("ev"), std::string("name"), std::string("button.hold"))
-        .then(act("hold-think", [this] { body_.express("thinking"); return "express=thinking"; })).build();
+    // v1: a hold means "talk to me", so the face goes to listening and a rise
+    // chirp says the ears are open. The thinking face comes later, from the
+    // brain, once the cortex has handed over a transcript.
+    eng.add_rule("hold-listen").when(std::string("ev"), std::string("name"), std::string("button.hold"))
+        .then(act("hold-listen", [this] {
+            std::string d = body_.express("listening") ? "express=listening" : "express=listening(FAILED)";
+            if (policy_.chirp_allowed(now_ms_)) d += body_.chirp("rise") ? " chirp=rise" : " chirp=rise(FAILED)";
+            return d; })).build();
     eng.add_rule("release-noop").when(std::string("ev"), std::string("name"), std::string("button.release"))
         .then(act("release-noop", [] { return std::string(); })).build();
     eng.add_rule("dark-sleepy").when(std::string("ev"), std::string("name"), std::string("light.low"))
@@ -156,7 +162,8 @@ int Reflex::on_event(const std::string& name, int64_t now_ms) {
         log_.note(std::string("reflex action threw: ") + e.what());
     }
     eng.clear_refraction();  // bounds refraction_set_ growth; fresh WmeIds per assert already prevent wrong re-matches
-    log_.event(name, "fired=" + std::to_string(fired_) + " total_us=" + std::to_string(t.us()));
+    last_us_ = t.us();
+    log_.event(name, "fired=" + std::to_string(fired_) + " total_us=" + std::to_string(last_us_));
     return fired_;
 }
 
