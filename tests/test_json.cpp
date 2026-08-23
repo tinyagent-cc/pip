@@ -24,5 +24,21 @@ static void run() {
     CHECK(!get_int(f, std::strlen(f), "r", &v));
     CHECK(get_int(f, std::strlen(f), "g", &v) && v == 7);
     CHECK(get_int(f, std::strlen(f), "b", &v) && v == 8);
+
+    const char* bo = R"({"brain":true,"cortex": false ,"n":1,"s":"true","t":truthy})";
+    size_t bn = std::strlen(bo);
+    bool bv = false;
+    CHECK(get_bool(bo, bn, "brain", &bv) && bv);
+    CHECK(get_bool(bo, bn, "cortex", &bv) && !bv);
+    CHECK(!get_bool(bo, bn, "missing", &bv));
+    CHECK(!get_bool(bo, bn, "n", &bv));       // number is not a bool
+    CHECK(!get_bool(bo, bn, "s", &bv));       // quoted "true" is not a bool
+    CHECK(!get_bool(bo, bn, "t", &bv));       // a prefix of "true" that keeps going is not a bool
+
+    // Truncating reader: /say has to shorten a long line, not reject it.
+    const char* ts = R"({"text":"hello from the wire"})";
+    char small[8];
+    CHECK(get_string_trunc(ts, std::strlen(ts), "text", small, sizeof small)); CHECK_STREQ(small, "hello f");
+    CHECK(!get_string_trunc(ts, std::strlen(ts), "nope", small, sizeof small));
 }
 TEST_MAIN()

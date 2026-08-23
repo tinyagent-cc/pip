@@ -6,15 +6,14 @@ a Rete rule firing in microseconds, zero tokens. Hold the button and it
 thinks; that one is an LLM agent choosing an expression, a chirp, and a
 mood color.
 
-Status: body firmware v0 on `main`. It builds warning-free in three configs
-(full, `PIP_LITE`, and the I2S audio smoke) and flashes onto a Pico 2 W;
-serial confirms the face loop runs, WiFi retries a failed join about every
-10 s without stalling that loop, and the I2S tone loop runs on RP2350.
-Chirps in the main firmware are still a print
-stub, real audio is the next integration. Bench checks (the panel, the
-button and LED, the light reading, the curl cookbook, the event POSTs, the
-tone itself) are pending. Design spec: [tiny_agent](https://github.com/tinyagent-cc/tiny_agent)
-`docs/superpowers/specs/2026-08-22-pip-companion-design.md`.
+Status: body firmware v1. The face has brows, a mouth, ten moods, a speech
+bubble and a status strip; a framed UART link carries commands and events to
+and from the brain, with HTTP kept for config, debug and as the fallback when
+the wire is dead. It builds warning-free in three configs (full, `PIP_LITE`,
+and the I2S audio smoke). Chirps and speech playback are still print stubs;
+audio is the next plan. Design spec:
+[tiny_agent](https://github.com/tinyagent-cc/tiny_agent)
+`docs/superpowers/specs/2026-08-23-pip-wow-demo-design.md`.
 
 ## Brain
 
@@ -33,7 +32,7 @@ a Pi 5 and deployed over SSH. Endpoints, flags, build, and deploy:
 | Tactile button | interaction | GP15 to GND (internal pull-up) |
 | RGB LED (4-pin) | mood | R GP10, G GP11, B GP12 through 220 ohm, common to GND |
 | MAX98357A + speaker | chirps (next plan) | BCLK GP26, LRC GP27, DIN GP28, VIN 3V3, GND |
-| Pi Zero 2 W (brain) | wire link, 921600 8N1 | GP0 TX (pin 1) to Zero pin 10 (GPIO15 RXD), GP1 RX (pin 2) to Zero pin 8 (GPIO14 TXD), pin 3 GND to Zero pin 6 |
+| Pi Zero 2 W (brain) | wire link, live in v1, 921600 8N1 | GP0 TX (pin 1) to Zero pin 10 (GPIO15 RXD), GP1 RX (pin 2) to Zero pin 8 (GPIO14 TXD), pin 3 GND to Zero pin 6 |
 
 Pi Zero header, first ten pins, board seen from above with the SD card to your left
 (pin 1 is the square pad nearest the SD card; odd pins are the inner row, even pins the outer row;
@@ -103,6 +102,65 @@ landscape orientation, before pulling jumpers.
 onboard LED answers `/led`, expressions and chirps print to serial, light
 reads as -1.
 
+## What is on the screen
+
+320x240 landscape. The top 200 rows are the face, the bottom 40 are the HUD
+strip, and the two are pushed as separate dirty rects:
+
+```
++--------------------------------------------------+ 0
+|                                                  |
+|         ___              ___                     |   brows
+|        (o  )            (  o)              |I|   |   eyes, and the listening
+|         ---              ---                     |   waveform glyph on the right
+|                  \___/                           |   mouth: flat, smile, frown, o, open
+|   +------------------------------------------+   |
+|   | hello from the wire                      |   |   speech bubble, 2 lines,
+|   +------------------------------------------+   |   hides the mouth while up
++--------------------------------------------------+ 200
+| reflex                                  W F B C J|   scene caption, link glyphs
+| [####    ] ( 22C rfx 95us jdg 5.8s               |   lux bar, moon, temp, timings
++--------------------------------------------------+ 240
+```
+
+The background colour is the mood: dark blue-grey idle, warm happy, near-black
+sleepy, violet thinking, amber alert, grey-blue sad, teal listening. `wink`,
+`alert` and `surprised` hold 3 s and fall back to idle (to `sleepy` while the
+light sensor says night); `happy` and `sad` hold 10 s; `thinking` and
+`listening` hold until the brain changes them.
+
+The HUD glyphs are `W` wire, `F` wifi, `B` brain, `C` cortex, each green when
+up and grey when down, then which mind answered last (`J` Jetson, `5` Pi 5,
+`-` none). The strip repaints only when something on it actually changed.
+
+## The link
+
+The wire is UART0 at 921600 8N1, framed as
+`0xA5 | type | len u16 LE | payload | crc8` with a 512-byte payload cap.
+`PROTOCOL.md` has the whole contract.
+
+What travels on the wire: every command the brain sends (`express`, `chirp`,
+`led`, `say`, `hud`, `scene`, `ping`), every event the body raises, a
+`{"senses":{...}}` object every 500 ms, and a `hello` at boot. Speech PCM gets
+its own frame type and lands with the audio plan.
+
+What stays on HTTP: the same commands for a human with `curl`, `/senses` for
+polling, and events when the wire is dead. The body decides per event: the wire
+when a good frame arrived in the last 2 s, otherwise `POST <brain>/event`.
+
+Probe it from the Zero with nothing but the standard library:
+
+```
+python3 scripts/link-probe.py                        # ping, express, say, hud
+python3 scripts/link-probe.py --watch --listen 10    # just watch the senses stream
+python3 scripts/link-probe.py '{"cmd":"express","emotion":"wink"}'
+```
+
+A `{"cmd":"ping"}` comes back as a `{"pong":true}` frame; nothing else is
+acknowledged on the wire. `curl http://<pip-ip>/senses` reports
+`link.rx_frames` and `link.rx_bad`, which is the quickest way to tell a dead
+wire from a noisy one.
+
 ## Build and flash
 
 ```
@@ -127,29 +185,39 @@ the loop never stalls on it:
 After a `wifi down` it retries about every 10 s, and reconnects on its own if
 the AP comes back.
 
-Host-side tests for the platform-free core (`core/`), 6 binaries, all green:
-`cmake -S tests -B build-host && cmake --build build-host && ctest --test-dir
-build-host`.
+Host-side tests for the platform-free core (`core/`), 10 binaries, all green:
+`cmake -S tests -B build-tests -G Ninja && cmake --build build-tests && ctest
+--test-dir build-tests`. The same build produces `render_frames`, which is not
+a test: it dumps one PPM per screen state into `frames/` so the face can be
+looked at before it reaches a panel.
 
 ## Talk to the body
 
 ```
 curl -s http://<pip-ip>/senses
-# {"light_lux": <float>, "temp_c": <float>, "button": "up"|"down"}
+# {"light_lux": <float>, "temp_c": <float>, "button": "up"|"down",
+#  "link": {"rx_frames": n, "rx_bad": n, "audio_dropped": n},
+#  "audio": {"free": bytes, "playing": false}}
 
-curl -s -X POST http://<pip-ip>/express -d '{"emotion":"happy"}'
-# {"ok": true}
+curl -s http://<pip-ip>/ping
+# {"pong": true}
 
+curl -s -X POST http://<pip-ip>/express -d '{"emotion":"surprised"}'
 curl -s -X POST http://<pip-ip>/chirp   -d '{"name":"trill"}'
-# {"ok": true}
-
 curl -s -X POST http://<pip-ip>/led     -d '{"r":0,"g":0,"b":60}'
+curl -s -X POST http://<pip-ip>/say     -d '{"text":"hello from the lan"}'
+curl -s -X POST http://<pip-ip>/scene   -d '{"name":"reflex"}'
+curl -s -X POST http://<pip-ip>/hud     -d '{"reflex_us":95,"judge_ms":5800,"brain":true,"mind":"J"}'
 # {"ok": true}
 ```
 
+Emotions: `idle happy sleepy thinking alert wink surprised sad listening
+talking`. `/say` cuts text at 95 characters and wraps it to two lines of 24.
+`/hud` takes any subset of its fields and keeps the rest.
+
 Events (`button.press`, `button.hold`, `button.release`, `light.low`,
-`light.high`) are POSTed to `http://<brain>/event` as `{"event":"..."}`, at
-most once each. The contract is `PROTOCOL.md`.
+`light.high`) go to the wire when it is alive and to `http://<brain>/event` as
+`{"event":"..."}` otherwise, at most once each. The contract is `PROTOCOL.md`.
 
 ## Audio on RP2350
 
@@ -160,6 +228,8 @@ not yet wired into the main firmware's chirp path.
 
 ## Layout
 
-    core/       platform-free C++17: face engine, HTTP + JSON, protocol, event FSMs (host-tested)
-    firmware/   Pico SDK glue: drivers, WiFi, raw-tcp HTTP server, event POST, main loop
-    tests/      host test harness for core/
+    core/       platform-free C++17: face, HUD, 5x7 font and draw primitives, link codec,
+                HTTP + JSON, protocol, event FSMs (host-tested)
+    firmware/   Pico SDK glue: drivers, WiFi, raw-tcp HTTP server, event POST, UART link, main loop
+    tests/      host test harness for core/, plus render_frames for visual QA
+    scripts/    link-probe.py and the WiFi/wiring helpers

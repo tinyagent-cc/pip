@@ -74,7 +74,7 @@ const char* reason(int s) {
 size_t build_response(char* out, size_t cap, int status, const char* body, const char* extra) {
     unsigned blen = (unsigned)std::strlen(body);
     int n = std::snprintf(out, cap,
-        "HTTP/1.0 %d %s\r\nContent-Type: application/json\r\nContent-Length: %u\r\nX-Pip-Protocol: 0\r\n%s%sConnection: close\r\n\r\n%s",
+        "HTTP/1.0 %d %s\r\nContent-Type: application/json\r\nContent-Length: %u\r\nX-Pip-Protocol: 1\r\n%s%sConnection: close\r\n\r\n%s",
         status, reason(status), blen, extra ? extra : "", extra ? "\r\n" : "", body);
     return (n < 0 || (size_t)n >= cap) ? 0 : (size_t)n;
 }
