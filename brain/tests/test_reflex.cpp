@@ -36,11 +36,25 @@ TEST_CASE("dark then bright: sleepy, then alert + trill; bright when already bri
     CHECK(r.rx.on_event("light.high", 300) == 1);
     CHECK(r.body.snapshot().size() == 3);
 }
-TEST_CASE("hold shows thinking; unknown events match nothing") {
+TEST_CASE("hold opens the ears; unknown events match nothing") {
     Rig r;
     CHECK(r.rx.on_event("button.hold", 1) == 1);
-    CHECK(r.body.snapshot() == V{"express:thinking"});
+    CHECK(r.body.snapshot() == V{"express:listening", "chirp:rise"});
     CHECK(r.rx.on_event("bogus.event", 2) == 0);
+}
+
+TEST_CASE("a hold right after a press listens without a second chirp") {
+    Rig r; r.policy.chirp_gap_ms = 5000;
+    r.rx.on_event("button.press", 1000);
+    r.rx.on_event("button.hold", 1500);
+    CHECK(r.body.snapshot() == V{"express:wink", "chirp:rise", "express:listening"});
+}
+
+TEST_CASE("on_event records its own duration for the HUD") {
+    Rig r;
+    r.rx.on_event("button.press", 1);
+    CHECK(r.rx.last_event_us() >= 0);
+    CHECK(r.rx.last_event_us() < 50000);
 }
 TEST_CASE("temp.hot fires on the transition only, LED red capped at night") {
     Rig r; r.policy.hot_c = 35; r.policy.night_cap = 40;
