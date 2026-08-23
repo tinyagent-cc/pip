@@ -19,7 +19,9 @@ std::string Judgment::system_prompt() {
            "chirp (rise, trill, drop, purr, boot, sad), set the led (channels 0-255), read your senses, "
            "say one short sentence out loud, and look through your camera. "
            "If the person asked a question, answer it in one or two short sentences with say; otherwise react to the event. "
-           "Use at most one express call, one chirp call and one led call. Keep every sentence under 90 characters.";
+           "Work in at most two turns: first call all the tools you want at once (express, chirp, led, look), "
+           "then call say with your answer and stop. Use at most one express, one chirp and one led. "
+           "Keep every sentence under 90 characters.";
 }
 
 std::string Judgment::user_prompt(const Context& ctx) {
@@ -189,7 +191,15 @@ Verdict Judgment::react(const std::string& trigger, const Context& ctx) {
         else v.mind = primary_answered ? 'J' : (cfg_.llm2_url.empty() ? 'J' : '5');
         // The closing sentence is spoken too, unless the model already said
         // it through the say tool.
-        if (!v.reply.empty() && v.reply != said) speak(v.reply);
+        // The agent loop reports its own failures as text ("Error: agent reached
+        // maximum iterations"); that is a log line, never something Pip says.
+        if (v.reply.rfind("Error:", 0) == 0) {
+            log_.note("judgment: " + v.reply);
+            v.reply.clear();
+            if (said.empty()) speak("I got lost in thought. Ask me again?");
+        } else if (!v.reply.empty() && v.reply != said) {
+            speak(v.reply);
+        }
     } catch (const std::exception& e) {
         log_.note(std::string("llm failed: ") + e.what());
         v.reply.clear();

@@ -18,7 +18,7 @@ struct JudgmentConfig {
     int timeout_s = 90;
     int max_tokens = 200;
     double temperature = 0.7;
-    int max_iterations = 4;
+    int max_iterations = 6;
 };
 
 // recent_events newest last, "12s ago button.press". transcript is what the
