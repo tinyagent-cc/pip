@@ -1,0 +1,23 @@
+[Unit]
+Description=Pip cortex (ears and eyes on the Jetson)
+After=llama-vlm.service
+Wants=llama-vlm.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/pip-cortex
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+Environment=PIP_ALSA_DEVICE=plughw:2,0
+Environment=PIP_WHISPER_BIN=%h/tools/whisper.cpp/build/bin/whisper-cli
+Environment=PIP_WHISPER_MODEL=%h/tools/whisper.cpp/models/ggml-base.en.bin
+Environment=PIP_CAMERA=/dev/video0
+Environment=PIP_FRAME_W=1280
+Environment=PIP_FRAME_H=720
+Environment=PIP_VLM_URL=http://127.0.0.1:8082
+ExecStart=/usr/bin/python3 -m uvicorn cortex:app --host 0.0.0.0 --port 8090
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
