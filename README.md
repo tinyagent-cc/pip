@@ -58,6 +58,10 @@ the longest leg, one short leg to GND. Lights: common anode, so COM goes to 3V3 
 
 `PIP_LITE` needs no wiring: a bare Pico 2 W on USB.
 
+WiFi credentials: `scripts/wifi-from-mac.sh` writes the Mac's current network and its
+keychain password into the git-ignored `firmware/config.h` (asks for the password if the
+keychain says no). Nothing is printed and nothing is committed.
+
 If the eyes come up mirrored or upside down, that is MADCTL, not the wiring.
 `firmware/src/drivers/ili9341.cpp` sends `0x36 0x28` (MV|BGR, landscape), which suits the
 common red breakout and has not been checked on any other panel. Try `0xE8`, the other
