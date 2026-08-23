@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 #include "pip/face.hpp"
+#include "pip/hud.hpp"
 using namespace pip;
 
 static Framebuffer fb;
@@ -57,6 +58,33 @@ int main() {
     {
         Face f; f.tick(16, fb); f.set_emotion(Emotion::Listening); settle(f);
         settle(f, 6); dump("listening-glyph");
+    }
+    // Full screen: face plus HUD, the thing the camera actually sees.
+    {
+        Face f; f.tick(16, fb); f.set_emotion(Emotion::Thinking); settle(f);
+        Hud h;
+        h.set_senses(140.0f, false, 41.0f, true, true);
+        HudUpdate u;
+        u.has_scene = true; std::snprintf(u.scene, sizeof u.scene, "reflex");
+        u.has_reflex_us = true; u.reflex_us = 95;
+        u.has_judge_ms = true; u.judge_ms = 5800;
+        u.has_brain = true; u.brain = true;
+        u.has_cortex = true; u.cortex = true;
+        u.has_mind = true; u.mind = 'J';
+        h.apply(u);
+        h.draw(fb, true);
+        dump("screen-reflex");
+        Hud h2;
+        h2.set_senses(3.0f, true, 22.0f, false, true);
+        HudUpdate u2;
+        u2.has_scene = true; std::snprintf(u2.scene, sizeof u2.scene, "night");
+        u2.has_mind = true; u2.mind = '5';
+        h2.apply(u2);
+        Face g; g.tick(16, fb); g.set_night(true); settle(g);
+        g.say("that is much too bright", 5000);
+        settle(g, 4);
+        h2.draw(fb, true);
+        dump("screen-night");
     }
     return 0;
 }

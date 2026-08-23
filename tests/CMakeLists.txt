@@ -26,3 +26,4 @@ pip_test(test_link)
 # Visual QA, not a test: dumps PPM frames for eyeballing.
 add_executable(render_frames render_frames.cpp)
 target_link_libraries(render_frames pip_core)
+pip_test(test_hud)
