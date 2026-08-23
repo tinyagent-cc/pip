@@ -46,9 +46,13 @@ bool Brain::post_event(const json& body) {
         return false;
     }
     count_event(name);
+    // A typed question rides along with a hold and stands in for the
+    // microphone: the bench and a mic-less demo both need it.
+    std::string typed = body.value("transcript", std::string());
+    std::string typed_lang = body.value("lang", std::string());
     {
         std::lock_guard<std::mutex> g(m_);
-        queue_.push_back({name, now_ms(), false});
+        queue_.push_back({name, now_ms(), false, std::move(typed), std::move(typed_lang)});
     }
     cv_.notify_all();
     return true;
@@ -60,7 +64,7 @@ void Brain::inject(const std::string& event) {
     count_event(event);
     {
         std::lock_guard<std::mutex> g(m_);
-        queue_.push_back({event, now_ms(), true});
+        queue_.push_back({event, now_ms(), true, "", ""});
     }
     cv_.notify_all();
 }
@@ -156,7 +160,8 @@ void Brain::poll_senses() {
     refresh_services();
 }
 
-void Brain::process_event(const std::string& name, int64_t t_ms) {
+void Brain::process_event(const std::string& name, int64_t t_ms,
+                          const std::string& typed, const std::string& typed_lang) {
     // reflex_ shares Policy::last_chirp_ms_ with now_ms(); a press queued
     // behind a slow judgment call must be evaluated against the dequeue
     // clock, not the (possibly much older) enqueue time. t_ms still ages
@@ -172,7 +177,11 @@ void Brain::process_event(const std::string& name, int64_t t_ms) {
 
     bool cortex_up = cortex_ && cortex_->enabled();
     std::string transcript, lang;
-    if (cortex_up) {
+    if (!typed.empty()) {
+        transcript = typed;
+        lang = typed_lang;
+        log_.note("typed transcript: \"" + typed + "\"");
+    } else if (cortex_up) {
         auto heard = cortex_->listen(cfg_.listen_seconds);
         cortex_up = heard.has_value();
         if (heard) { transcript = heard->text; lang = heard->lang; }
@@ -258,7 +267,7 @@ void Brain::worker_loop() {
         queue_.pop_front();
         lock.unlock();
         try {
-            process_event(qe.name, qe.t_ms);
+            process_event(qe.name, qe.t_ms, qe.transcript, qe.lang);
         } catch (const std::exception& e) {
             log_.note(std::string("brain worker: ") + e.what());
         } catch (...) {

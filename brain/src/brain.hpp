@@ -71,10 +71,17 @@ public:
     void warm_fallback() { judgment_.warm_fallback_async(); }
 
 private:
-    struct QueuedEvent { std::string name; int64_t t_ms; bool simulated; };
+    struct QueuedEvent {
+        std::string name;
+        int64_t t_ms;
+        bool simulated;
+        std::string transcript;   // typed question: skips the microphone
+        std::string lang;
+    };
 
     void worker_loop();
-    void process_event(const std::string& name, int64_t t_ms);
+    void process_event(const std::string& name, int64_t t_ms,
+                       const std::string& typed = "", const std::string& typed_lang = "");
     void poll_senses();
     void record_recent(const std::string& name, int64_t t_ms);
     void refresh_services();

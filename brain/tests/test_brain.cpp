@@ -100,6 +100,29 @@ TEST_CASE("hold: listen, think, answer, and the HUD carries the numbers") {
     CHECK(h.contains("cortex")); CHECK(h.contains("voice")); CHECK(h.contains("scene"));
 }
 
+TEST_CASE("a typed transcript skips the microphone and feeds the judgment; the reply is remembered") {
+    FakeLlm llm; llm.replies = {text_reply("Four."), text_reply("You asked me two plus two.")};
+    FakeCortex cortex; FakeVoice voice;
+    Cortex c(cortex.url()); Voice v(voice.url());
+    FakeBody body; body.next_senses = {15, 26, true, true}; Policy policy; EventLog log{100, nullptr};
+    JudgmentConfig jcfg; jcfg.llm_url = llm.url(); jcfg.timeout_s = 5;
+    Brain brain(quiet, body, policy, log, jcfg, &c, &v);
+    brain.post_event(json{{"event","button.hold"}, {"transcript","what is two plus two?"}, {"lang","en"}});
+    brain.wait_idle();
+    brain.post_event(json{{"event","button.hold"}, {"transcript","what did I just ask you?"}});
+    brain.wait_idle();
+    // No listen: the two typed questions never touched the cortex.
+    for (auto& call : cortex.snapshot()) CHECK(call.rfind("listen:", 0) != 0);
+    auto reqs = llm.requests_snapshot();
+    REQUIRE(reqs.size() == 2);
+    std::string first = reqs[0]["messages"][1]["content"];
+    CHECK(first.find("They just said: \"what is two plus two?\"") != std::string::npos);
+    std::string second = reqs[1]["messages"][1]["content"];
+    CHECK(second.find("They said: \"what is two plus two?\"") != std::string::npos);
+    CHECK(second.find("You replied: \"Four.\"") != std::string::npos);
+    CHECK(second.find("They just said: \"what did I just ask you?\"") != std::string::npos);
+}
+
 TEST_CASE("with the cortex down Pip still answers, and the HUD says the cortex is out") {
     FakeLlm llm; llm.replies = {text_reply("I heard nothing but I'm here.")};
     FakeCortex cortex; cortex.fail = true;
