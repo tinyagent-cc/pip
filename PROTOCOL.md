@@ -24,6 +24,16 @@ POST <brain_url>/event with one of:
 Delivery is at-most-once; the body does not retry. The brain treats events
 as facts, not commands.
 
+## Brain endpoints
+
+POST /event {"event": "..."}  -> 200 {"ok": true}
+                                  400 {"ok": false, "error": "bad event"}  (not an object, or missing/unknown "event")
+GET  /health -> {"ok", "uptime_s", "events", "reflexes", "llm_calls", "night", "llm", "queue"}
+GET  /log?n= -> [{"t", "kind", "name", "detail", "micros"?, "prompt_tokens"?, "completion_tokens"?}, ...]
+              (n defaults to 50; kind is one of event|reflex|llm|tool|note)
+
+Same plain-HTTP, no-TLS, same-LAN contract as the body.
+
 ## Versioning
 
 Every response the body sends carries `X-Pip-Protocol: 0`, errors included.
