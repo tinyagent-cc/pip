@@ -21,6 +21,9 @@ struct FakeBody : IBody {
     bool led(int r, int gg, int b) override { std::lock_guard<std::mutex> g(m); calls.push_back("led:" + std::to_string(r) + "," + std::to_string(gg) + "," + std::to_string(b)); return !fail; }
     Senses senses() override { std::lock_guard<std::mutex> g(m); calls.push_back("senses"); Senses s = next_senses; if (fail) s.ok = false; return s; }
     std::vector<std::string> snapshot() { std::lock_guard<std::mutex> g(m); return calls; }
+    // Takes the mutex so a test can rewrite the fixture's readings while the
+    // brain's worker thread is concurrently calling senses() in the background.
+    void set_senses(Senses s, bool fail_flag) { std::lock_guard<std::mutex> g(m); next_senses = s; fail = fail_flag; }
 };
 
 // A Pico stand-in speaking protocol v0 on 127.0.0.1.

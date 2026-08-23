@@ -9,7 +9,8 @@ using V = std::vector<std::string>;
 TEST_CASE("hold: agent calls express through the body tool, usage and latency are logged") {
     FakeLlm llm; llm.replies = {tool_call_reply("express", json{{"emotion","happy"}}), text_reply("I smiled at you.")};
     FakeBody body; Policy policy; EventLog log{50, nullptr}; Reflex rx{body, policy, log};
-    Judgment j({.llm_url = llm.url(), .model = "fake", .timeout_s = 5}, body, rx, log);
+    JudgmentConfig jcfg; jcfg.llm_url = llm.url(); jcfg.model = "fake"; jcfg.timeout_s = 5;  // explicit: gcc -Wextra flags partial designated init
+    Judgment j(jcfg, body, rx, log);
     REQUIRE(j.enabled());
     Context ctx; ctx.recent_events = {"3s ago button.press"}; ctx.senses = {12.0, 27.0, true, true};
     std::string out = j.react("button.hold", ctx);
@@ -31,7 +32,8 @@ TEST_CASE("hold: agent calls express through the body tool, usage and latency ar
 TEST_CASE("night guardrail applies to the model's led call") {
     FakeLlm llm; llm.replies = {tool_call_reply("led", json{{"r",255},{"g",255},{"b",255}}), text_reply("Bright!")};
     FakeBody body; Policy policy; policy.night = true; policy.night_cap = 40; EventLog log{50, nullptr}; Reflex rx{body, policy, log};
-    Judgment j({.llm_url = llm.url(), .timeout_s = 5}, body, rx, log);
+    JudgmentConfig jcfg; jcfg.llm_url = llm.url(); jcfg.timeout_s = 5;  // explicit: gcc -Wextra flags partial designated init
+    Judgment j(jcfg, body, rx, log);
     j.react("button.hold", Context{});
     CHECK(body.snapshot() == V{"led:40,40,40"});
 }
@@ -39,14 +41,16 @@ TEST_CASE("disabled without a URL; unreachable server returns empty and logs") {
     FakeBody body; Policy policy; EventLog log{50, nullptr}; Reflex rx{body, policy, log};
     Judgment off({}, body, rx, log);
     CHECK_FALSE(off.enabled());
-    Judgment dead({.llm_url = "http://127.0.0.1:9", .timeout_s = 1}, body, rx, log);
+    JudgmentConfig dead_cfg; dead_cfg.llm_url = "http://127.0.0.1:9"; dead_cfg.timeout_s = 1;  // explicit: gcc -Wextra flags partial designated init
+    Judgment dead(dead_cfg, body, rx, log);
     CHECK(dead.react("button.hold", Context{}) == "");
     CHECK(log.count(EventLog::Kind::Note) >= 1);
 }
 TEST_CASE("a config that makes DeepAgent's constructor throw is caught, not propagated") {
     FakeLlm llm;
     FakeBody body; Policy policy; EventLog log{50, nullptr}; Reflex rx{body, policy, log};
-    Judgment j({.llm_url = llm.url(), .max_iterations = 0}, body, rx, log);
+    JudgmentConfig jcfg; jcfg.llm_url = llm.url(); jcfg.max_iterations = 0;  // explicit: gcc -Wextra flags partial designated init
+    Judgment j(jcfg, body, rx, log);
     std::string out;
     CHECK_NOTHROW(out = j.react("button.hold", Context{}));
     CHECK(out == "");

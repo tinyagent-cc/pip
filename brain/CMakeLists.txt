@@ -18,11 +18,12 @@ set(TINY_AGENT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(TINY_AGENT_BUILD_BENCH OFF CACHE BOOL "" FORCE)
 set(TINY_AGENT_FETCH_RETE OFF CACHE BOOL "" FORCE)
 if(TINY_AGENT_DIR)
-  add_subdirectory(${TINY_AGENT_DIR} tiny_agent EXCLUDE_FROM_ALL)
+  add_subdirectory(${TINY_AGENT_DIR} tiny_agent EXCLUDE_FROM_ALL SYSTEM)
 else()
   FetchContent_Declare(tiny_agent
     GIT_REPOSITORY https://github.com/tinyagent-cc/tiny_agent.git
-    GIT_TAG aee29c7)  # main, pinned 2026-08-23
+    GIT_TAG aee29c7  # main, pinned 2026-08-23
+    SYSTEM)
   FetchContent_MakeAvailable(tiny_agent)
 endif()
 
@@ -43,7 +44,8 @@ find_package(Threads REQUIRED)
 
 add_library(brain_core STATIC
   src/body.cpp src/reflex.cpp src/judgment.cpp src/brain.cpp)
-target_include_directories(brain_core PUBLIC src ${PIP_RETE_INCLUDE})
+target_include_directories(brain_core PUBLIC src)
+target_include_directories(brain_core SYSTEM PUBLIC ${PIP_RETE_INCLUDE})
 target_link_libraries(brain_core PUBLIC tiny_agent Threads::Threads)
 target_compile_options(brain_core PUBLIC -Wall -Wextra)
 
