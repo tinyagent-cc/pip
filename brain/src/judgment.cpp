@@ -132,7 +132,16 @@ Verdict Judgment::react(const std::string& trigger, const Context& ctx) {
         // the guardrail middleware, so the latency it records covers
         // guardrail processing too, and the tool-call count it logs is the
         // post-guardrail one the agent loop actually dispatches.
-        MiddlewareFn usage = [this, trigger, &primary_answered](std::vector<Message>& msgs, Next next) -> LLMResponse {
+        MiddlewareFn usage = [this, trigger, &primary_answered, &said](std::vector<Message>& msgs, Next next) -> LLMResponse {
+            // Once the model has said something, the answer is out: end the
+            // loop here instead of letting a one-tool-per-turn model keep
+            // calling express/chirp/say until the iteration cap.
+            if (!said.empty()) {
+                log_.llm(trigger, 0, 0, 0, "short-circuit after say");
+                return LLMResponse{Message::assistant(said),
+                                   json{{"prompt_tokens", 0}, {"completion_tokens", 0}, {"total_tokens", 0}},
+                                   "stop", json{{"pip_short_circuit", true}}};
+            }
             primary_answered = false;   // the marker below sets it again if the primary replies
             auto t0 = std::chrono::steady_clock::now();
             LLMResponse r = next(msgs);
