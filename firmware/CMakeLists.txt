@@ -50,4 +50,15 @@ if(PIP_AUDIO_SMOKE)
   pico_enable_stdio_usb(pip_i2s_smoke 1)
   pico_enable_stdio_uart(pip_i2s_smoke 0)
   pico_add_extra_outputs(pip_i2s_smoke)
+
+  # Bench smoke: the tone plus a UART0 echo on GP0/GP1, to check the amp and the Zero link together.
+  add_executable(pip_bench_smoke smoke/bench.cpp)
+  target_compile_definitions(pip_bench_smoke PRIVATE
+    PICO_AUDIO_I2S_DATA_PIN=28 PICO_AUDIO_I2S_CLOCK_PIN_BASE=26)
+  target_include_directories(pip_bench_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_options(pip_bench_smoke PRIVATE -Wall -Wextra)
+  target_link_libraries(pip_bench_smoke pico_stdlib pico_audio_i2s hardware_uart)
+  pico_enable_stdio_usb(pip_bench_smoke 1)
+  pico_enable_stdio_uart(pip_bench_smoke 0)
+  pico_add_extra_outputs(pip_bench_smoke)
 endif()
