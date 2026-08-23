@@ -57,7 +57,10 @@ void Brain::record_recent(const std::string& name, int64_t t_ms) {
 
 void Brain::poll_senses() {
     Senses s = body_.senses();
-    {
+    // A failed reading is never cached: the Pico may boot later, and a stale
+    // "ok" flag under a plausible-looking light_lux/temp_c would otherwise
+    // get told to the LLM as fact once the button.hold path stops re-probing.
+    if (s.ok) {
         std::lock_guard<std::mutex> g(m_);
         last_senses_ = s;
         has_senses_ = true;
@@ -76,21 +79,24 @@ void Brain::process_event(const std::string& name, int64_t t_ms) {
     if (name == "button.hold" && judgment_.enabled()) {
         Context ctx;
         int64_t now = now_ms();
-        {
-            std::lock_guard<std::mutex> g(m_);
-            for (auto& [n, tms] : recent_) ctx.recent_events.push_back(std::to_string((now - tms) / 1000) + "s ago " + n);
-        }
         bool have_senses;
         {
             std::lock_guard<std::mutex> g(m_);
+            for (auto& [n, tms] : recent_) ctx.recent_events.push_back(std::to_string((now - tms) / 1000) + "s ago " + n);
             ctx.senses = last_senses_;
             have_senses = has_senses_;
         }
-        if (!have_senses) {
-            ctx.senses = body_.senses();
-            std::lock_guard<std::mutex> g(m_);
-            last_senses_ = ctx.senses;
-            has_senses_ = true;
+        // No cached reading yet, or the cached one was never ok (can't
+        // happen once poll_senses only caches ok readings, but a fresh
+        // reading here can still fail) -> probe once more before asking.
+        if (!have_senses || !ctx.senses.ok) {
+            Senses fresh = body_.senses();
+            ctx.senses = fresh;
+            if (fresh.ok) {
+                std::lock_guard<std::mutex> g(m_);
+                last_senses_ = fresh;
+                has_senses_ = true;
+            }
         }
         std::string reply = judgment_.react("button.hold", ctx);
         log_.note("judgment: " + reply);
@@ -134,7 +140,9 @@ void Brain::worker_loop() {
 
 void Brain::wait_idle() {
     std::unique_lock<std::mutex> lock(m_);
-    idle_cv_.wait(lock, [this] { return queue_.empty() && !busy_; });
+    // stop_ short-circuits the predicate so a waiter can never block forever
+    // if the worker exits (destructor running) with a non-empty queue.
+    idle_cv_.wait(lock, [this] { return stop_ || (queue_.empty() && !busy_); });
 }
 
 json Brain::health() const {
