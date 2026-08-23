@@ -102,8 +102,8 @@ void Brain::process_event(const std::string& name, int64_t t_ms) {
                 has_senses_ = true;
             }
         }
-        std::string reply = judgment_.react("button.hold", ctx);
-        log_.note("judgment: " + reply);
+        Verdict v = judgment_.react("button.hold", ctx);
+        log_.note("judgment: " + v.reply);
     }
 }
 
