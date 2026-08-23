@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 #include <mutex>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -11,7 +12,11 @@
 namespace pip::brain {
 struct FakeBody : IBody {
     std::mutex m; std::vector<std::string> calls; Senses next_senses{10.0, 25.0, false, true}; bool fail = false;
-    bool express(const std::string& e) override { std::lock_guard<std::mutex> g(m); calls.push_back("express:" + e); return !fail; }
+    bool throw_on_express = false;
+    bool express(const std::string& e) override {
+        std::lock_guard<std::mutex> g(m);
+        if (throw_on_express) throw std::runtime_error("boom");
+        calls.push_back("express:" + e); return !fail; }
     bool chirp(const std::string& n) override { std::lock_guard<std::mutex> g(m); calls.push_back("chirp:" + n); return !fail; }
     bool led(int r, int gg, int b) override { std::lock_guard<std::mutex> g(m); calls.push_back("led:" + std::to_string(r) + "," + std::to_string(gg) + "," + std::to_string(b)); return !fail; }
     Senses senses() override { std::lock_guard<std::mutex> g(m); calls.push_back("senses"); Senses s = next_senses; if (fail) s.ok = false; return s; }
