@@ -131,7 +131,9 @@ void Reflex::install_guardrails() {
 }
 
 tiny_agent::MiddlewareFn Reflex::guardrail_middleware() {
-    return rx_.middleware({.extract_response_facts = middleware::tool_call_facts});
+    middleware::ReflexConfig rc;
+    rc.extract_response_facts = middleware::tool_call_facts;
+    return rx_.middleware(rc);
 }
 
 int Reflex::on_event(const std::string& name, int64_t now_ms) {

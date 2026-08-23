@@ -108,15 +108,21 @@ std::string Judgment::react(const std::string& trigger, const Context& ctx) {
             // a brace-init list (which would copy-construct from an
             // std::initializer_list element).
             std::vector<AnyChat> fallbacks;
-            fallbacks.push_back(init_chat_model("openai:" + cfg_.model,
-                LLMConfig{.base_url = cfg_.llm2_url, .timeout_seconds = cfg_.timeout_s}));
+            LLMConfig fb;  // explicit members: gcc 14 -Wextra flags partial designated init
+            fb.base_url = cfg_.llm2_url;
+            fb.timeout_seconds = cfg_.timeout_s;
+            fallbacks.push_back(init_chat_model("openai:" + cfg_.model, fb));
             cfg.middlewares.push_back(middleware::model_fallback(std::move(fallbacks)));
         }
 
-        auto agent = make_agent(
-            OpenAIChat{.model = cfg_.model, .api_key = "", .base_url = cfg_.llm_url,
-                       .temperature = cfg_.temperature, .max_tokens = cfg_.max_tokens, .timeout_seconds = cfg_.timeout_s},
-            cfg);
+        OpenAIChat llm;
+        llm.model = cfg_.model;
+        llm.api_key = "";
+        llm.base_url = cfg_.llm_url;
+        llm.temperature = cfg_.temperature;
+        llm.max_tokens = cfg_.max_tokens;
+        llm.timeout_seconds = cfg_.timeout_s;
+        auto agent = make_agent(std::move(llm), cfg);
 
         return agent.run(user_prompt(ctx));
     } catch (const std::exception& e) {
