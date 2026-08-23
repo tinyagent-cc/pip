@@ -11,7 +11,7 @@ dispatcher in `core/src/protocol.cpp`.
 
 ```
 POST /express  {"emotion": "idle|happy|sleepy|thinking|alert|wink|surprised|sad|listening|talking"} -> {"ok": true}
-POST /chirp    {"name": "rise|trill|drop|purr"}                     -> {"ok": true}
+POST /chirp    {"name": "rise|trill|drop|purr|boot|sad"}             -> {"ok": true}
 POST /led      {"r": 0-255, "g": 0-255, "b": 0-255}                 -> {"ok": true}
 POST /say      {"text": "..."}                                      -> {"ok": true}
 POST /hud      {"reflex_us", "judge_ms", "brain", "cortex", "mind", "scene"}  -> {"ok": true}
@@ -24,6 +24,21 @@ GET  /senses   -> {"light_lux": float, "temp_c": float, "button": "up|down",
 
 `/say` needs a non-empty `text`; anything past 95 characters is cut, not refused. The
 bubble shows two lines of up to 24 characters at font scale 2 and holds for 3 s.
+
+`/chirp` plays one of six synthesized sounds. They are generated on the fly from sine
+segments and a 10 ms / 30 ms linear envelope, so there are no audio files anywhere:
+
+| name | what it is | length |
+|---|---|---|
+| `rise` | 600 -> 1200 Hz sweep, the "yes" | 200 ms |
+| `trill` | 1000/1300 Hz alternating five times | 300 ms |
+| `drop` | 1000 -> 400 Hz sweep, the "no" | 250 ms |
+| `purr` | 300 Hz under a 40 Hz tremolo, content | 400 ms |
+| `boot` | C-E-G, played once at power-up | 380 ms |
+| `sad` | 500 Hz falling to 350 Hz | 450 ms |
+
+A chirp pre-empts speech: for its length its samples go out instead, while the speech
+underneath is still consumed, so a sentence the brain paced at real time stays in step.
 
 `/hud` takes any subset of its fields; an omitted field keeps its last value on the strip.
 `reflex_us` and `judge_ms` are integers >= 0, `brain` and `cortex` are booleans, `mind` is a
@@ -53,13 +68,20 @@ value over `"123456789"` is 0xF4. Payload is at most 512 bytes.
 | type | meaning |
 |---|---|
 | 0x01 | JSON, UTF-8, the objects below |
-| 0x02 | AUDIO, raw s16 mono 16 kHz (Plan B consumes it; v1 counts it and drops it) |
+| 0x02 | AUDIO, raw s16 mono 16 kHz, <= 512 bytes (256 samples, 16 ms) |
 
 A receiver that sees an unknown type byte, a length over 512, or a bad CRC counts the frame
 bad and hunts for the next 0xA5. The offending byte is itself re-examined as a possible
 sync byte, so a truncated frame followed immediately by a good one costs one bad count and
 no good frames. Counters surface in `/senses` as `link.rx_frames`, `link.rx_bad`,
 `link.audio_dropped`.
+
+AUDIO frames go straight into the body's 32768-sample (64 KB) playback ring. The sender
+paces them at real time; if a frame does not fit, the body drops the whole frame and counts
+it in `link.audio_dropped` rather than playing half of it. `/senses` reports the ring as
+`audio.free` (free space in bytes, so 65534 when idle) and `audio.playing` (true while a
+chirp or any queued speech is still to come out of the speaker). Speech only exists on the
+wire: HTTP bodies stay under 1 KB and there is no audio route on HTTP.
 
 **Body to brain (up):**
 
@@ -161,6 +183,6 @@ Every response the body sends carries `X-Pip-Protocol: 1`, errors included. The 
 `hello` carries the same number. Breaking changes bump the header, the `hello` and the
 version in this file together.
 
-Changes from v0: four emotions (`surprised`, `sad`, `listening`, `talking`), the `/say`,
-`/hud`, `/scene` and `/ping` routes, the link counters and audio block in `/senses`, and
-the UART link itself.
+Changes from v0: four emotions (`surprised`, `sad`, `listening`, `talking`), two chirps
+(`boot`, `sad`), the `/say`, `/hud`, `/scene` and `/ping` routes, the link counters and
+audio block in `/senses`, the UART link itself, and AUDIO frames actually being played.

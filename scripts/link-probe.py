@@ -5,12 +5,15 @@ Run it on whatever is wired to the Pico (the Pi Zero, /dev/ttyAMA0):
 
     python3 scripts/link-probe.py                       # the default demo sequence
     python3 scripts/link-probe.py --watch --listen 10    # just watch what the body says
+    python3 scripts/link-probe.py --tone 2               # stream 2 s of 440 Hz as AUDIO frames
     python3 scripts/link-probe.py '{"cmd":"ping"}' '{"cmd":"express","emotion":"wink"}'
 
 Frame format is PROTOCOL.md v1: 0xA5 | type | len u16 LE | payload | crc8.
 """
 import argparse
+import math
 import os
+import struct
 import sys
 import termios
 import time
@@ -145,6 +148,32 @@ def pump(fd, dec, seconds, quiet=False):
     return seen
 
 
+def stream_tone(fd, dec, seconds, hz, rate=16000, per=256, amp=12000):
+    """Send a sine as type 0x02 AUDIO frames, paced at real time like the brain would.
+
+    s16 mono at `rate`; `per` samples a frame is 512 bytes, the protocol's maximum payload
+    and 16 ms of sound. Keeps draining RX between frames so senses frames still print.
+    """
+    total = int(rate * seconds)
+    step = 2.0 * math.pi * hz / rate
+    t0 = time.monotonic()
+    i = 0
+    sent = 0
+    while i < total:
+        n = min(per, total - i)
+        payload = struct.pack("<%dh" % n, *[int(amp * math.sin(step * (i + k))) for k in range(n)])
+        os.write(fd, encode(TYPE_AUDIO, payload))
+        sent += 1
+        i += n
+        due = t0 + i / float(rate)
+        while True:
+            left = due - time.monotonic()
+            if left <= 0:
+                break
+            pump(fd, dec, min(left, 0.004))
+    return sent
+
+
 DEMO = [
     '{"cmd":"ping"}',
     '{"cmd":"express","emotion":"happy"}',
@@ -161,16 +190,21 @@ def main():
     ap.add_argument("--watch", action="store_true", help="send nothing, only listen")
     ap.add_argument("--listen", type=float, default=3.0, help="seconds to keep reading after the last command")
     ap.add_argument("--gap", type=float, default=1.0, help="seconds between commands")
+    ap.add_argument("--tone", type=float, default=0.0, help="seconds of sine to stream as AUDIO frames")
+    ap.add_argument("--tone-hz", type=float, default=440.0)
     args = ap.parse_args()
 
     fd = open_port(args.port, args.baud)
     dec = Decoder()
     try:
-        cmds = args.commands or ([] if args.watch else DEMO)
+        cmds = args.commands or ([] if (args.watch or args.tone) else DEMO)
         for js in cmds:
             print("-> %s" % js)
             os.write(fd, encode(TYPE_JSON, js.encode("utf-8")))
             pump(fd, dec, args.gap)
+        if args.tone:
+            n = stream_tone(fd, dec, args.tone, args.tone_hz)
+            print("-> %d audio frames, %.1f s of %.0f Hz" % (n, args.tone, args.tone_hz))
         pump(fd, dec, args.listen)
     finally:
         os.close(fd)

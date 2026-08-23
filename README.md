@@ -6,12 +6,13 @@ a Rete rule firing in microseconds, zero tokens. Hold the button and it
 thinks; that one is an LLM agent choosing an expression, a chirp, and a
 mood color.
 
-Status: body firmware v1. The face has brows, a mouth, ten moods, a speech
-bubble and a status strip; a framed UART link carries commands and events to
-and from the brain, with HTTP kept for config, debug and as the fallback when
-the wire is dead. It builds warning-free in three configs (full, `PIP_LITE`,
-and the I2S audio smoke). Chirps and speech playback are still print stubs;
-audio is the next plan. Design spec:
+Status: body firmware v1 with sound. The face has brows, a mouth, ten moods, a
+speech bubble and a status strip; a framed UART link carries commands, events
+and speech PCM to and from the brain, with HTTP kept for config, debug and as
+the fallback when the wire is dead; six synthesized chirps and streamed speech
+come out of a MAX98357A over I2S, and the mouth moves while they do. It builds
+warning-free in three configs (full, `PIP_LITE`, and the I2S audio smoke).
+Design spec:
 [tiny_agent](https://github.com/tinyagent-cc/tiny_agent)
 `docs/superpowers/specs/2026-08-23-pip-wow-demo-design.md`.
 
@@ -181,7 +182,7 @@ a Pi 5 and deployed over SSH. Endpoints, flags, build, and deploy:
 | VEML7700 | ambient light | SDA GP4, SCL GP5, VIN 3V3, GND |
 | Tactile button | interaction | GP15 to GND (internal pull-up) |
 | RGB LED (4-pin) | mood | R GP10, G GP11, B GP12 through 220 ohm, common to GND |
-| MAX98357A + speaker | chirps (next plan) | BCLK GP26, LRC GP27, DIN GP28, VIN 3V3, GND |
+| MAX98357A + speaker | chirps and speech | BCLK GP26, LRC GP27, DIN GP28, VIN 3V3, GND |
 | Pi Zero 2 W (brain) | wire link, live in v1, 921600 8N1 | GP0 TX (pin 1) to Zero pin 10 (GPIO15 RXD), GP1 RX (pin 2) to Zero pin 8 (GPIO14 TXD), pin 3 GND to Zero pin 6 |
 
 Pi Zero header, first ten pins, board seen from above with the SD card to your left
@@ -250,7 +251,8 @@ landscape orientation, before pulling jumpers.
 
 `pip-lite`: `-DPIP_LITE=ON` builds the same firmware for a bare Pico 2 W:
 onboard LED answers `/led`, expressions and chirps print to serial, light
-reads as -1.
+reads as -1. Lite has no speaker, so the audio code is compiled out of it
+entirely and it is the one build that does not need `PICO_EXTRAS_PATH`.
 
 ## What is on the screen
 
@@ -291,8 +293,8 @@ The wire is UART0 at 921600 8N1, framed as
 
 What travels on the wire: every command the brain sends (`express`, `chirp`,
 `led`, `say`, `hud`, `scene`, `ping`), every event the body raises, a
-`{"senses":{...}}` object every 500 ms, and a `hello` at boot. Speech PCM gets
-its own frame type and lands with the audio plan.
+`{"senses":{...}}` object every 500 ms, a `hello` at boot, and speech PCM in
+its own frame type (0x02, s16 mono 16 kHz, 512 bytes a frame).
 
 What stays on HTTP: the same commands for a human with `curl`, `/senses` for
 polling, and events when the wire is dead. The body decides per event: the wire
@@ -362,19 +364,58 @@ curl -s -X POST http://<pip-ip>/hud     -d '{"reflex_us":95,"judge_ms":5800,"bra
 ```
 
 Emotions: `idle happy sleepy thinking alert wink surprised sad listening
-talking`. `/say` cuts text at 95 characters and wraps it to two lines of 24.
+talking`. Chirps: `rise trill drop purr boot sad`. `/say` cuts text at 95
+characters and wraps it to two lines of 24.
 `/hud` takes any subset of its fields and keeps the rest.
 
 Events (`button.press`, `button.hold`, `button.release`, `light.low`,
 `light.high`) go to the wire when it is alive and to `http://<brain>/event` as
 `{"event":"..."}` otherwise, at most once each. The contract is `PROTOCOL.md`.
 
-## Audio on RP2350
+## Sound
 
-`pico_audio_i2s` builds and runs on RP2350 with BCLK GP26 / LRCLK GP27 / DIN
-GP28 (tone heard: pending Riadh). Build it with `-DPIP_AUDIO_SMOKE=ON`
-(needs `PICO_EXTRAS_PATH`); it links as a separate `pip_i2s_smoke` binary,
-not yet wired into the main firmware's chirp path.
+One format all the way through: **s16 mono at 16 kHz**. Chirps render it, the
+link carries it, the ring holds it. Only the last step is stereo, because
+`pico_audio_i2s` wants sample pairs; both channels carry the same sample and
+the MAX98357A takes one of them.
+
+**Chirps** are synthesized on demand from sine segments and a 10 ms attack /
+30 ms release envelope, so there are no audio files and no baked tables:
+`rise` (600->1200 Hz, "yes"), `trill` (1000/1300 alternating), `drop`
+(1000->400, "no"), `purr` (300 Hz under a 40 Hz tremolo), `boot` (C-E-G, once
+at power-up) and `sad` (500->350 Hz). Each is 200-450 ms and peaks well under
+the s16 rail.
+
+**Speech** arrives as type 0x02 link frames, 256 samples (16 ms) each, paced
+at real time by the brain, and goes into a 32768-sample (64 KB) ring. There is
+no speech over HTTP: bodies stay under 1 KB, so a body on WiFi alone chirps
+but does not talk.
+
+**Chirps pre-empt speech.** While a chirp plays its samples go out instead,
+and the speech underneath is still consumed, so a sentence that gets
+interrupted stays in step with the real time it was paced at. A chirp arriving
+over a playing chirp restarts from the top.
+
+**The mouth follows the speech, not the chirps.** `Face::set_talking` goes on
+while the ring holds speech and off a quarter second after it runs dry, which
+is long enough to ride out the gaps between link frames without stuttering.
+
+**Timing.** The I2S pool is 4 buffers of 512 sample pairs, 128 ms buffered
+ahead of a 30 fps frame loop; the loop fills every buffer the driver hands
+back and never blocks on one. An empty ring plays silence. A frame that will
+not fit is dropped whole and counted in `link.audio_dropped`; `/senses`
+reports `audio.free` in bytes and `audio.playing`.
+
+Test it from whatever is wired to the Pico:
+
+```
+python3 scripts/link-probe.py --tone 2          # 2 s of 440 Hz as AUDIO frames
+curl -s http://<pip-ip>/senses                  # audio.playing is true while it runs
+```
+
+The standalone tone smoke (`-DPIP_AUDIO_SMOKE=ON`, needs `PICO_EXTRAS_PATH`)
+is still there as `pip_i2s_smoke` and `pip_bench_smoke` for checking the amp
+without the rest of the firmware.
 
 ## Layout
 

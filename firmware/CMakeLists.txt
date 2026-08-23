@@ -1,11 +1,16 @@
 cmake_minimum_required(VERSION 3.20)
 set(PICO_BOARD pico2_w)
-# Declared before the SDK includes because PIP_AUDIO_SMOKE decides whether pico-extras is
-# pulled in, and both imports have to run before project().
+# Declared before the SDK includes because PIP_LITE and PIP_AUDIO_SMOKE decide whether
+# pico-extras is pulled in, and both imports have to run before project().
 option(PIP_LITE "Bare Pico 2 W: no display, light sensor, or RGB LED" OFF)
 option(PIP_AUDIO_SMOKE "Also build the I2S tone smoke (needs PICO_EXTRAS_PATH)" OFF)
 include(pico_sdk_import.cmake)
-if(PIP_AUDIO_SMOKE)
+# The full firmware has a speaker, so pico-extras is not optional for it; only the lite
+# build (no display, no sound) can be made without it.
+if(PIP_AUDIO_SMOKE OR NOT PIP_LITE)
+  if(NOT PICO_EXTRAS_PATH AND NOT DEFINED ENV{PICO_EXTRAS_PATH})
+    message(FATAL_ERROR "pip needs pico-extras for I2S audio: set PICO_EXTRAS_PATH (or configure with -DPIP_LITE=ON for the soundless build)")
+  endif()
   include(pico_extras_import.cmake)
 endif()
 project(pip C CXX ASM)
@@ -27,8 +32,15 @@ pico_set_printf_implementation(pip pico)
 if(PIP_LITE)
   target_compile_definitions(pip PRIVATE PIP_LITE=1)
 else()
-  target_link_libraries(pip hardware_spi hardware_i2c hardware_pwm)
-  target_sources(pip PRIVATE src/drivers/ili9341.cpp src/drivers/veml7700.cpp)
+  target_link_libraries(pip hardware_spi hardware_i2c hardware_pwm pico_audio_i2s)
+  target_sources(pip PRIVATE src/drivers/ili9341.cpp src/drivers/veml7700.cpp src/audio.cpp)
+  # Same two numbers as the smoke: CMake cannot read pins.hpp, so audio.cpp static_asserts
+  # them back against it and a pin change stops this build.
+  target_compile_definitions(pip PRIVATE PICO_AUDIO_I2S_DATA_PIN=28 PICO_AUDIO_I2S_CLOCK_PIN_BASE=26)
+  # pico-extras' own audio.cpp leaves two audio_connection members default-initialized on
+  # purpose. It compiles into this target, so it inherits our flags; exempt that one file.
+  set_source_files_properties(${PICO_EXTRAS_PATH}/src/common/pico_audio/audio.cpp
+    PROPERTIES COMPILE_OPTIONS "-Wno-missing-field-initializers")
 endif()
 pico_enable_stdio_usb(pip 1)
 pico_enable_stdio_uart(pip 0)

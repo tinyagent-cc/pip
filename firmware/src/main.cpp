@@ -10,18 +10,42 @@
 #include "net/http_server.hpp"
 #include "net/event_post.hpp"
 #include "net/link.hpp"
+#include "pip/link.hpp"
 #include "pip/face.hpp"
 #include "pip/hud.hpp"
 #include "pip/events.hpp"
 #include "drivers/button.hpp"
 #include "drivers/temp.hpp"
 #ifndef PIP_LITE
+#include "audio.hpp"
 #include "drivers/ili9341.hpp"
 #include "drivers/rgb_led.hpp"
 #include "drivers/veml7700.hpp"
 #endif
 
 static pip::Framebuffer g_fb;
+
+#ifndef PIP_LITE
+// An AUDIO frame off the wire, s16 mono 16 kHz, at most 512 bytes. The link counts the
+// drop; it does not own the ring, so it cannot decide whether the frame fits.
+// A flag, not a timestamp: on_audio runs inside link_poll, after the loop has already read
+// the clock, so a time taken here is in the loop's future and every unsigned age computed
+// from it underflows. The loop stamps it with its own now_ms instead.
+static bool g_audio_seen = false;
+
+static void on_audio(const uint8_t* pcm, uint16_t len) {
+    const size_t n = len / 2;
+    if (!n) return;
+    g_audio_seen = true;
+    pip::AudioRing& ring = pip::audio::ring();
+    if (ring.free() < n) { pip::net::link_count_audio_drop(); return; }
+    // The frame sits in the decoder's byte buffer; copy rather than cast, so nothing here
+    // depends on that buffer happening to be 2-byte aligned.
+    static int16_t pcm16[pip::link::MAX_PAYLOAD / 2];
+    std::memcpy(pcm16, pcm, n * sizeof(int16_t));
+    ring.write(pcm16, n);
+}
+#endif
 
 int main() {
     stdio_init_all();
@@ -31,6 +55,8 @@ int main() {
 #ifndef PIP_LITE
     pip::drv::Ili9341 lcd;
     lcd.init(spi0, 40 * 1000 * 1000);
+    const bool have_audio = pip::audio::init();
+    if (!have_audio) printf("pip: audio off, carrying on mute\n");
 #endif
     pip::drv::button_init();
     pip::drv::temp_init();
@@ -58,6 +84,12 @@ int main() {
     // be talking. A hello is how the brain learns the body rebooted.
     pip::net::link_init(921600);
     pip::net::link_send_json("{\"hello\":{\"fw\":\"v1\",\"protocol\":1}}");
+#ifndef PIP_LITE
+    // One sound on boot, so a power cycle is audible from across the room.
+    if (have_audio) pip::audio::ring().preempt(pip::Chirp::Boot);
+    bool talking = false;
+    uint32_t last_speech_ms = 0;
+#endif
     bool online = false, server_started = false;
     uint32_t next_server_try_ms = 0;   // a failed start retries every 5 s, not every frame
     pip::net::wifi_start_async(PIP_WIFI_SSID, PIP_WIFI_PASS, to_ms_since_boot(get_absolute_time()));
@@ -67,7 +99,12 @@ int main() {
     while (true) {
         uint32_t now_ms = to_ms_since_boot(get_absolute_time());
         uint32_t dt = now_ms - last_ms; last_ms = now_ms;
+#ifndef PIP_LITE
+        pip::net::link_poll(body, have_audio ? on_audio : nullptr);
+        pip::audio::pump();
+#else
         pip::net::link_poll(body, nullptr);
+#endif
         bool wire = pip::net::link_alive(now_ms);
         online = pip::net::wifi_poll(now_ms) == pip::net::WifiState::Up;
         if (online && !server_started && (int32_t)(now_ms - next_server_try_ms) >= 0) {
@@ -93,9 +130,19 @@ int main() {
 #endif
         }
         body.publish(lux, temp_c, btn.down());
+#ifndef PIP_LITE
+        body.publish_link(pip::net::link_stats(), pip::audio::stats());
+#else
         body.publish_link(pip::net::link_stats(), pip::AudioStats{});
+#endif
         pip::Emotion pe; if (body.take_emotion(pe)) { face.set_emotion(pe); printf("pip: express %s\n", pip::emotion_name(pe)); }
-        pip::Chirp pc; if (body.take_chirp(pc)) printf("pip: chirp %s (audio lands with Plan 3b)\n", pip::chirp_name(pc));
+        pip::Chirp pc;
+        if (body.take_chirp(pc)) {
+#ifndef PIP_LITE
+            if (have_audio) pip::audio::ring().preempt(pc);
+#endif
+            printf("pip: chirp %s\n", pip::chirp_name(pc));
+        }
         char text[96]; if (body.take_say(text, sizeof text)) { face.say(text, 3000); printf("pip: say %s\n", text); }
         pip::HudUpdate hu; if (body.take_hud(hu)) hud.apply(hu);
         char scene[16];
@@ -144,6 +191,21 @@ int main() {
                 pip::net::link_send_json(frame);
             }
         }
+#ifndef PIP_LITE
+        // The mouth follows speech, not chirps. A brain pacing at real time keeps the ring
+        // near empty -- the pump drains each frame as it lands -- so the mouth follows when
+        // speech last arrived, not how much of it is queued. A quarter-second tail rides out
+        // the gaps between link frames and closes on a real end of sentence.
+        if (g_audio_seen || pip::audio::ring().speech_playing()) { g_audio_seen = false; last_speech_ms = now_ms; }
+        const bool want_talk = have_audio && last_speech_ms != 0 && (now_ms - last_speech_ms) < 250
+                               && !pip::audio::ring().chirp_playing();
+        if (want_talk != talking) {
+            talking = want_talk;
+            face.set_talking(talking);
+            printf("pip: talking %s\n", talking ? "on" : "off");
+        }
+        pip::audio::pump();          // again after the frame's work, before the SPI push
+#endif
         pip::Rect dirty = face.tick(dt, g_fb);
         pip::Rect hdirty = hud.draw(g_fb, false);
 #ifndef PIP_LITE

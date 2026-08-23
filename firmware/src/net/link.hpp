@@ -11,5 +11,8 @@ void link_init(unsigned baud);                    // uart0 on pins::UART_TX / UA
 void link_poll(Body& body, void (*on_audio)(const uint8_t* pcm, uint16_t len));
 bool link_send_json(const char* json);            // false when the JSON is over the 512-byte payload
 bool link_alive(uint32_t now_ms);                 // a good frame arrived within the last 2 s
+// The audio ring belongs to the main loop, not to the link, so the on_audio callback is the
+// one that knows a frame did not fit. It counts the drop here, where /senses reads it.
+void link_count_audio_drop();
 LinkStats link_stats();
 }

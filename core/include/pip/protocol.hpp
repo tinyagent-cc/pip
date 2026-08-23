@@ -4,7 +4,7 @@
 #include "pip/http.hpp"
 namespace pip {
 enum class Emotion : uint8_t { Idle, Happy, Sleepy, Thinking, Alert, Wink, Surprised, Sad, Listening, Talking, Count };
-enum class Chirp : uint8_t { Rise, Trill, Drop, Purr, Count };
+enum class Chirp : uint8_t { Rise, Trill, Drop, Purr, Boot, Sad, Count };
 const char* emotion_name(Emotion e);
 bool emotion_from(const char* s, Emotion& out);
 const char* chirp_name(Chirp c);
