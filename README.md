@@ -15,6 +15,156 @@ audio is the next plan. Design spec:
 [tiny_agent](https://github.com/tinyagent-cc/tiny_agent)
 `docs/superpowers/specs/2026-08-23-pip-wow-demo-design.md`.
 
+## Anatomy of Pip
+
+Four boxes, one desk. Reflexes are rules and run on the Pi Zero in
+microseconds. Judgment is an agent, runs on the Jetson, and costs seconds.
+When the Jetson is gone the Pi 5 answers instead. The Pico only ever shows,
+sounds and senses, which is why the face loop never waits on the LAN.
+
+| Device | Role | What runs on it | Link |
+|---|---|---|---|
+| Pico 2 W | body | `firmware/`: face, HUD, speech bubble, button, light and temperature | UART0 at 921600 to the Zero; WiFi HTTP for config, debug and as the fallback |
+| Pi Zero 2 W | brain | `brain/pip-brain`: rete_cpp reflex rules, the tiny_agent judgment loop, the scene director | the wire to the Pico, LAN to the Jetson and the Pi 5 |
+| Jetson Orin Nano | cortex | `services/cortex` on :8090 (`/listen`, `/see`), llama-server text on :8081, VLM on :8082, whisper.cpp CUDA | LAN |
+| Pi 5 | fallback mind and voice | `services/voice` on :8091 (Piper TTS), llama-server on :8081 | LAN |
+
+### How a press becomes a wink
+
+1. The button FSM debounces the press and raises `button.press` on the body.
+2. The body puts the event on the wire when a good frame arrived in the last
+   two seconds, and `POST`s it to the brain over HTTP when it did not.
+3. The brain's rete network matches `press-wink`. No model call, no tokens.
+4. The rule writes `{"cmd":"express","emotion":"wink"}` back down the same wire.
+5. The face flips to the wink shape, holds it three seconds, and falls back to
+   idle (to sleepy while the light sensor says the room is dark).
+6. The brain pushes `reflex_us` to the HUD, so the number is on the screen a
+   frame later.
+
+Measured at the brain with the body answering over HTTP: **757 ms**. Over the
+wire the same path is a rule match plus one UART frame, which is where the
+microseconds claim comes from. The bench has not timed that yet:
+`{{wire_reflex_us}}`.
+
+### How a hold becomes an answer
+
+1. Holding the button 1.5 s raises `button.hold`.
+2. `hold-listen` fires first, still a rule: listening face, `rise` chirp.
+3. The brain asks the cortex for four seconds of microphone and gets a
+   transcript back (`/listen`, 4.5 s for 3 s of audio, whisper `base.en` on
+   CUDA).
+4. The face turns to thinking and the agent runs on the Jetson's
+   Qwen2.5-3B-Instruct with six tools. One of them is `look`, which goes back
+   to the cortex for a camera frame and a VLM sentence (`/see`, 2.6 s end to
+   end, about 1.0 s once the VLM is warm).
+5. The answer goes to the Pi 5's Piper (`/tts`, 194 ms of synthesis for a
+   1.19 s clip) and streams to the body as PCM while the bubble shows the same
+   text.
+6. The HUD gets `judge_ms` and `mind`.
+
+Measured end to end on 2026-08-23 with the Jetson up: **9.8 s**, `judge_ms`
+9758, `mind` `J`. The three Jetson processes hold about 4.09 GB resident
+against a 6.5 GB budget, which is what leaves room for the VLM and whisper to
+sit alongside the text model instead of taking turns.
+
+### The scenes
+
+Each one is a script on the brain. `POST /scene` starts it, `GET /scenes`
+lists them, and a second scene while one is running gets a 409 with the name
+of the scene that has the stage. The frames below are the real screen, dumped
+from the same `core/` code the Pico runs, not mockups.
+
+Substitute the Zero's address for `<brain>` throughout.
+
+<img src="docs/frames/reflex.png" alt="Pip winking, HUD caption reflex" width="360">
+
+**`reflex`** asks for a press, waits six seconds for a real one, and stages the
+press itself if nobody obliges. The wink is a rule firing. Then it asks you to
+hold and ask something, which is the other half of the same scene.
+
+```
+curl -X POST http://<brain>:8080/scene -d '{"name":"reflex"}'
+```
+
+<img src="docs/frames/judge.png" alt="Pip thinking, bubble Let me think, HUD judge 9.7s mind J" width="360">
+
+The second beat of `reflex`: violet thinking face, the bubble carrying what
+Pip is about to say, `jdg` and the `J` on the HUD saying the Jetson answered
+and how long it took. Nothing on this screen came from a rule.
+
+<img src="docs/frames/night.png" alt="Pip sleepy, moon glyph, bubble Rule capped the LED to 40" width="360">
+
+**`night`** waits for the light sensor to drop, then asks the agent for a
+bright red LED and lets the guardrail refuse it. 255 goes in, 40 comes out,
+and Pip says so. The moon next to the lux bar is the body's own night flag,
+set from the same reading.
+
+```
+curl -X POST http://<brain>:8080/scene -d '{"name":"night"}'
+```
+
+<img src="docs/frames/fallback.png" alt="Pip happy, HUD cortex glyph grey, mind 5" width="360">
+
+**`fallback`** tells the judgment layer to skip the Jetson for one answer. The
+`C` glyph goes grey and `mind` reads `5`, so the film shows the fallback
+without anyone powering a box down mid-take. Pull the Jetson's power if you
+want the harder version; the HUD looks the same.
+
+```
+curl -X POST http://<brain>:8080/scene -d '{"name":"fallback"}'
+```
+
+<img src="docs/frames/fever.png" alt="Pip alert, HUD 36C, caption fever" width="360">
+
+**`fever`** is the `temp.hot` reflex above the 35 C threshold: alert face, red
+LED, no model involved. Warm the chip with a thumb, or let the scene stage the
+event after ten seconds.
+
+```
+curl -X POST http://<brain>:8080/scene -d '{"name":"fever"}'
+```
+
+<img src="docs/frames/who.png" alt="Pip listening, bubble The desk in the room has a clock on the wall" width="360">
+
+**`who`** calls `look`, which grabs a frame from the Brio on the Jetson and
+asks the VLM for one sentence. The bubble above is a real answer from
+2026-08-23, not a caption someone wrote. The waveform glyph on the right is
+the listening state.
+
+```
+curl -X POST http://<brain>:8080/scene -d '{"name":"who"}'
+```
+
+<img src="docs/frames/tour.png" alt="Pip talking, bubble I'm Pip, caption tour" width="360">
+
+**`tour`** runs about two minutes with nobody at the desk: one sentence per
+part, then `reflex`, `night` and `who` with every wait staged. `--tour` on the
+brain runs it ten seconds after start, which is what the unattended demo boots
+into.
+
+```
+curl -X POST http://<brain>:8080/scene -d '{"name":"tour"}'
+```
+
+The film script for all of this, with what to say and what to expect back, is
+[`docs/demo-script.md`](docs/demo-script.md). Re-render the gallery after a
+bench run:
+
+```
+cmake -S tests -B build-tests -G Ninja && cmake --build build-tests --target render_frames
+(cd build-tests && ./render_frames --scenes --reflex-us <measured> --judge-ms <measured>)
+python3 scripts/frames-to-png.py build-tests/frames docs/frames
+```
+
+### Where the rest is written down
+
+[`PROTOCOL.md`](PROTOCOL.md) is the wire and HTTP contract.
+[`brain/README.md`](brain/README.md) has the endpoints, the flags, the deploy
+and the log format. [`services/README.md`](services/README.md) has the cortex
+and voice contracts with the measured memory and latency behind every number
+above. [`hardware/`](hardware/) has the pin table, the pictorial and the
+WireViz harness, all generated from `firmware/pins.hpp`.
+
 ## Brain
 
 `brain/` is `pip-brain`: reflex rules (rete_cpp) answer most events in
