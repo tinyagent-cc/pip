@@ -27,8 +27,8 @@ sounds and senses, which is why the face loop never waits on the LAN.
 |---|---|---|---|
 | Pico 2 W | body | `firmware/`: face, HUD, speech bubble, button, light and temperature | UART0 at 921600 to the Zero; WiFi HTTP for config, debug and as the fallback |
 | Pi Zero 2 W | brain | `brain/pip-brain`: rete_cpp reflex rules, the tiny_agent judgment loop, the scene director | the wire to the Pico, LAN to the Jetson and the Pi 5 |
-| Jetson Orin Nano | cortex | `services/cortex` on :8090 (`/listen`, `/see`), llama-server text on :8081, VLM on :8082, whisper.cpp CUDA | LAN |
-| Pi 5 | fallback mind and voice | `services/voice` on :8091 (Piper TTS), llama-server on :8081 | LAN |
+| Jetson Orin Nano | cortex | `services/cortex` on :8090 (`/listen`, `/see`), llama-server text on :8081, VLM on :8082 | LAN |
+| Pi 5 | ears, voice, fallback mind | whisper-server on :8092, `services/voice` on :8091 (Piper TTS), llama-server on :8081 | LAN |
 
 ### How a press becomes a wink
 
@@ -53,8 +53,9 @@ next frame, so the wink is on the panel in well under 50 ms.
 1. Holding the button 1.5 s raises `button.hold`.
 2. `hold-listen` fires first, still a rule: listening face, `rise` chirp.
 3. The brain asks the cortex for four seconds of microphone and gets a
-   transcript back (`/listen`, 4.5 s for 3 s of audio, whisper `base.en` on
-   CUDA).
+   transcript back (`/listen`, ~6 s for 4 s of audio: the mic records on the
+   Jetson, the wav rides to the whisper-server on the Pi 5, silero VAD answers
+   instantly when nobody spoke).
 4. The face turns to thinking and the agent runs on the Jetson's
    Qwen2.5-3B-Instruct with six tools. One of them is `look`, which goes back
    to the cortex for a camera frame and a VLM sentence (`/see`, 2.6 s end to
@@ -258,8 +259,15 @@ Perception bench, 2026-08-24, all on the same box at once:
   to slower and real. `~/.config/pip/llama-vlm.env` (VLM_MODEL, VLM_MMPROJ,
   VLM_EXTRA) is the dial.
 - **Ears**: whisper small replaced base ("open shift releases 4.22" became
-  "OpenShift release is 4.22" for well under a second extra). large-v3-turbo
-  q5 OOMs at init beside the rest. `PIP_WHISPER_MODEL` is the dial.
+  "OpenShift release is 4.22"), and the ears moved to the Pi 5: a third GPU
+  tenant does not fit on the Jetson (whisper's KV cache OOMs at load beside
+  the two llama-servers), and each CLI spawn pays ~0.5 GB for a CUDA context.
+  A resident whisper-server on pi5:8092 runs `-ac 512` (encoder sized to the
+  10 s /listen clamp instead of whisper's padded 30 s window: 12 s to 6 s per
+  transcript) with silero VAD in front (room noise otherwise runs language
+  auto-detection off the rails: 20 s to transcribe nothing). `PIP_WHISPER_URL`
+  is the dial; unset it and the cortex spawns whisper-cli locally again.
+  The VLM's F16 mmproj became Q8_0 (819 MB to 445 MB) to pay for headroom.
 - **Voice**: Piper stays; Kokoro-82M A/B clips (en, fr; RTF 0.22 on a Mac,
   no Arabic) are with Riadh for a listening verdict.
 - Fitting all three: the text model runs `-c 2048` and nobody pins
@@ -417,6 +425,21 @@ A `{"cmd":"ping"}` comes back as a `{"pong":true}` frame; nothing else is
 acknowledged on the wire. `curl http://<pip-ip>/senses` reports
 `link.rx_frames` and `link.rx_bad`, which is the quickest way to tell a dead
 wire from a noisy one.
+
+### The radio cannot take the wire down with it
+
+The CYW43 WiFi chip can hard-stall (a continuous `STALL(0;31-31): timeout` on
+its bus), and when it does, every driver call blocks for about a second. The
+body's loop used to touch the chip every frame -- the heartbeat LED alone --
+so a dead radio dragged the loop to ~1 fps, overran the 45 ms UART ring, and
+turned speech into fragments while every reflex fell back to HTTP timeouts.
+That was one broken tour. Now every radio touch is timed through
+`pip::RadioGuard` (`core/include/pip/radio_guard.hpp`): one stalled call
+quarantines the radio for a minute (no WL traffic at all, the loop runs full
+speed, wire and audio untouched), then the guard power-cycles the chip with
+`cyw43_arch_deinit`/`init` and judges the result. The heartbeat LED also
+writes only on its 500 ms edge now, not thirty times a second. A dead radio
+costs Pip its WiFi; it no longer costs him his voice.
 
 ## Build and flash
 

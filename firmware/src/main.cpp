@@ -11,6 +11,7 @@
 #include "net/event_post.hpp"
 #include "net/link.hpp"
 #include "pip/link.hpp"
+#include "pip/radio_guard.hpp"
 #include "pip/face.hpp"
 #include "pip/hud.hpp"
 #include "pip/events.hpp"
@@ -92,6 +93,8 @@ int main() {
 #endif
     bool online = false, server_started = false;
     uint32_t next_server_try_ms = 0;   // a failed start retries every 5 s, not every frame
+    pip::RadioGuard rguard;
+    bool led_beat = false;
     pip::net::wifi_start_async(PIP_WIFI_SSID, PIP_WIFI_PASS, to_ms_since_boot(get_absolute_time()));
     uint32_t next_sense_ms = 0, next_uplink_ms = 0;
     absolute_time_t next = get_absolute_time();
@@ -106,7 +109,34 @@ int main() {
         pip::net::link_poll(body, nullptr);
 #endif
         bool wire = pip::net::link_alive(now_ms);
-        online = pip::net::wifi_poll(now_ms) == pip::net::WifiState::Up;
+        // Every radio touch is timed. A stalled CYW43 blocks ~1 s per call, which is 20x
+        // the UART ring and turns speech into fragments; the guard quarantines it instead.
+        if (rguard.allow(now_ms)) {
+            uint32_t r0 = to_ms_since_boot(get_absolute_time());
+            online = pip::net::wifi_poll(now_ms) == pip::net::WifiState::Up;
+            bool beat = (now_ms / 500) % 2 != 0;   // write on the edge, not every frame
+            if (beat != led_beat) { led_beat = beat; cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, beat); }
+            uint32_t took = to_ms_since_boot(get_absolute_time()) - r0;
+            rguard.report(now_ms, took);
+            if (took >= pip::RadioGuard::kStallMs)
+                printf("pip: radio stalled %ums, quarantined\n", (unsigned)took);
+        } else {
+            online = false;
+            if (rguard.should_reset(now_ms)) {
+                printf("pip: radio power-cycle\n");
+                uint32_t r0 = to_ms_since_boot(get_absolute_time());
+                cyw43_arch_deinit();
+                bool radio_ok = cyw43_arch_init() == 0;
+                if (radio_ok) pip::net::wifi_start_async(PIP_WIFI_SSID, PIP_WIFI_PASS, now_ms);
+                pip::net::http_server_reset();   // lwIP came back empty; forget the stale pcbs
+                server_started = false;
+                uint32_t took = to_ms_since_boot(get_absolute_time()) - r0;
+                // A healthy init spends ~300 ms downloading the wl firmware, so the reset is
+                // judged on its own scale: seconds mean the chip is still gone.
+                rguard.report(now_ms, radio_ok ? (took >= 2000 ? took : 0) : pip::RadioGuard::kStallMs);
+                printf("pip: radio %s (%ums)\n", radio_ok ? "back" : "still down", (unsigned)took);
+            }
+        }
         if (online && !server_started && (int32_t)(now_ms - next_server_try_ms) >= 0) {
             next_server_try_ms = now_ms + 5000;
             cyw43_arch_lwip_begin();
@@ -213,9 +243,6 @@ int main() {
         if (!hdirty.empty()) lcd.push(g_fb, hdirty);
 #else
         (void)dirty; (void)hdirty;
-#endif
-#ifndef PIP_LITE
-        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, (now_ms / 500) % 2);
 #endif
         // Resync instead of accumulating: one slow frame (a full-screen push is ~31 ms of
         // SPI) would otherwise leave next permanently in the past and the loop free-running.

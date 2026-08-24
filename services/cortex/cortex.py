@@ -47,6 +47,14 @@ WHISPER_MODEL = _env_path(
 # An English-only model (*.en.bin) cannot detect languages; the multilingual
 # one runs with -l auto and reports what it heard.
 WHISPER_MULTILINGUAL = not WHISPER_MODEL.endswith(".en.bin")
+# Extra whisper-cli flags, e.g. "-ng" to skip the CUDA context: each spawn pays
+# ~0.5 GB for one, and on a box already running two llama-servers that is the
+# difference between a transcript and an OOM.
+WHISPER_ARGS = os.environ.get("PIP_WHISPER_ARGS", "").split()
+# A whisper-server on another board (e.g. http://pi5.local:8092). The mic stays
+# here; only the wav travels. Set, it replaces the local whisper-cli spawn, which
+# remains the fallback when unset.
+WHISPER_URL = os.environ.get("PIP_WHISPER_URL", "")
 ARECORD_BIN = os.environ.get("PIP_ARECORD_BIN", "arecord")
 GST_BIN = os.environ.get("PIP_GST_BIN", "gst-launch-1.0")
 CAMERA = os.environ.get("PIP_CAMERA", "/dev/video0")
@@ -83,8 +91,14 @@ def _camera_present() -> bool:
 
 def _http_client(timeout: float) -> httpx.Client:
     """The single seam for outbound HTTP. Tests replace this rather than
-    patching `httpx.Client`, which Starlette's TestClient subclasses."""
-    return httpx.Client(timeout=timeout)
+    patching `httpx.Client`, which Starlette's TestClient subclasses.
+    local_address pins the socket to IPv4: avahi sometimes returns an AAAA
+    for .local names here, and the v6 route blackholes -- ~30 s of SYN
+    retries before the fallback, which read as a hung /listen."""
+    return httpx.Client(
+        timeout=timeout,
+        transport=httpx.HTTPTransport(local_address="0.0.0.0"),
+    )
 
 
 def _fail(message: str) -> JSONResponse:
@@ -133,6 +147,37 @@ def parse_lang(stderr: str) -> str:
     return m.group(1) if m else ""
 
 
+def _transcribe_remote(wav: str) -> tuple[bool, str | tuple[str, str]]:
+    """POST the wav to a whisper-server; verbose_json carries the detected
+    language ('en' or 'english' -- the first two letters are the code either way
+    for the languages Pip speaks)."""
+    try:
+        with open(wav, "rb") as fh, _http_client(60.0) as cli:
+            r = cli.post(
+                WHISPER_URL.rstrip("/") + "/inference",
+                files={"file": ("audio.wav", fh, "audio/wav")},
+                data={
+                    "response_format": "verbose_json",
+                    "language": "auto" if WHISPER_MULTILINGUAL else "en",
+                },
+            )
+    except Exception as exc:
+        return False, f"whisper server unreachable: {exc}"
+    if r.status_code == 500 and "construction from null" in (r.text or ""):
+        # whisper-server with VAD: a clip with no speech in it strips to nothing
+        # and the reply is built from a null language. That is a verdict, not an
+        # error -- nobody said anything.
+        return True, ("", "en")
+    if r.status_code != 200:
+        return False, f"whisper server: HTTP {r.status_code} {r.text[:120]}"
+    try:
+        d = r.json()
+    except ValueError:
+        return False, "whisper server: unparseable reply"
+    lang = (d.get("language") or "en")[:2] if WHISPER_MULTILINGUAL else "en"
+    return True, (clean_transcript(d.get("text") or ""), lang or "en")
+
+
 def _record_and_transcribe(seconds: int) -> tuple[bool, str | tuple[str, str]]:
     """(ok, (text, lang)-or-error). Blocking; called from a worker thread."""
     fd, wav = tempfile.mkstemp(prefix="pip-listen-", suffix=".wav")
@@ -151,8 +196,10 @@ def _record_and_transcribe(seconds: int) -> tuple[bool, str | tuple[str, str]]:
         if rec.returncode != 0:
             return False, f"arecord failed: {(rec.stderr or '').strip()[:200]}"
 
+        if WHISPER_URL:
+            return _transcribe_remote(wav)
         lang_args = ["-l", "auto"] if WHISPER_MULTILINGUAL else ["-l", "en"]
-        cmd = [WHISPER_BIN, "-m", WHISPER_MODEL, "-f", wav, "-nt", *lang_args]
+        cmd = [WHISPER_BIN, "-m", WHISPER_MODEL, "-f", wav, "-nt", *lang_args, *WHISPER_ARGS]
         try:
             out = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         except (subprocess.TimeoutExpired, OSError) as exc:
@@ -177,7 +224,7 @@ async def listen(request: Request):
         seconds = 4
     seconds = max(MIN_SECONDS, min(MAX_SECONDS, seconds))
 
-    if not _bin_ok(WHISPER_BIN):
+    if not WHISPER_URL and not _bin_ok(WHISPER_BIN):
         return _fail(f"whisper binary not found at {WHISPER_BIN}")
     if not _bin_ok(ARECORD_BIN):
         return _fail(f"arecord not found ({ARECORD_BIN}); no microphone")
@@ -387,7 +434,9 @@ def _vlm_up() -> bool:
 @app.get("/health")
 async def health():
     whisper, vlm, camera, mic, searchable = await asyncio.gather(
-        asyncio.to_thread(lambda: _bin_ok(WHISPER_BIN) and _bin_ok(WHISPER_MODEL)),
+        asyncio.to_thread(
+            lambda: bool(WHISPER_URL) or (_bin_ok(WHISPER_BIN) and _bin_ok(WHISPER_MODEL))
+        ),
         asyncio.to_thread(_vlm_up),
         asyncio.to_thread(_camera_present),
         asyncio.to_thread(_mic_present),

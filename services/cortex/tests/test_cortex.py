@@ -195,6 +195,57 @@ def test_listen_whisper_timeout_is_503(client, monkeypatch):
     assert r.status_code == 503
 
 
+def test_listen_remote_whisper(client, monkeypatch):
+    seen = {}
+
+    def on_post(url, **kw):
+        seen["url"] = url
+        seen["language"] = kw["data"]["language"]
+        return response(200, json={"text": "  Bonjour   Pip  ", "language": "fr"})
+
+    monkeypatch.setattr(cortex, "WHISPER_URL", "http://pi5.local:8092")
+    monkeypatch.setattr(cortex, "WHISPER_MULTILINGUAL", True)
+    monkeypatch.setattr(cortex, "_http_client", FakeHttp(on_post=on_post))
+    monkeypatch.setattr(
+        cortex.subprocess, "run", fake_runner({"arecord": good_arecord})
+    )
+    r = client.post("/listen", json={"seconds": 2})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["text"] == "Bonjour Pip"
+    assert body["lang"] == "fr"
+    assert seen["url"] == "http://pi5.local:8092/inference"
+    assert seen["language"] == "auto"
+
+
+def test_listen_remote_vad_no_speech_is_empty(client, monkeypatch):
+    def on_post(url, **kw):
+        return response(500, text="basic_string: construction from null is not valid")
+
+    monkeypatch.setattr(cortex, "WHISPER_URL", "http://pi5.local:8092")
+    monkeypatch.setattr(cortex, "_http_client", FakeHttp(on_post=on_post))
+    monkeypatch.setattr(
+        cortex.subprocess, "run", fake_runner({"arecord": good_arecord})
+    )
+    r = client.post("/listen", json={"seconds": 2})
+    assert r.status_code == 200
+    assert r.json()["text"] == ""
+
+
+def test_listen_remote_whisper_down_is_503(client, monkeypatch):
+    def on_post(url, **kw):
+        raise cortex.httpx.ConnectError("refused")
+
+    monkeypatch.setattr(cortex, "WHISPER_URL", "http://pi5.local:8092")
+    monkeypatch.setattr(cortex, "_http_client", FakeHttp(on_post=on_post))
+    monkeypatch.setattr(
+        cortex.subprocess, "run", fake_runner({"arecord": good_arecord})
+    )
+    r = client.post("/listen", json={"seconds": 2})
+    assert r.status_code == 503
+    assert "unreachable" in r.json()["error"]
+
+
 def test_listen_accepts_a_body_without_json_content_type(client, monkeypatch):
     monkeypatch.setattr(
         cortex.subprocess,

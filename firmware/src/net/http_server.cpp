@@ -79,4 +79,7 @@ bool http_server_start(uint16_t port, Body& body) {
     tcp_accept(lpcb, on_accept);
     return true;   // the caller holds the lwIP lock, so it does the logging
 }
+void http_server_reset() {
+    for (Conn& k : g_conns) { k.used = false; k.pcb = nullptr; k.len = 0; k.idle = 0; }
+}
 }

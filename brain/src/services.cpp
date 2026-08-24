@@ -52,10 +52,11 @@ std::optional<json> Cortex::ask(const char* path, const std::string& body, int r
     return j;
 }
 
-// The read timeout has to outlast the recording itself, so it grows with the
-// window the caller asked for.
+// The read timeout has to outlast the recording plus the transcription. The
+// ears live on the Pi 5 now (~6 s warm, ~10 s on a cold model), so the margin
+// is 20 s, not 10.
 std::optional<Heard> Cortex::listen(int seconds) {
-    auto j = ask("/listen", json{{"seconds", seconds}}.dump(), seconds + 10);
+    auto j = ask("/listen", json{{"seconds", seconds}}.dump(), seconds + 20);
     if (!j || !j->contains("text") || !(*j)["text"].is_string()) {
         if (j) set_error("/listen: reply had no text");
         return std::nullopt;

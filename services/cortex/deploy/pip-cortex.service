@@ -11,6 +11,12 @@ Environment=PYTHONUNBUFFERED=1
 Environment=PIP_ALSA_DEVICE=plughw:2,0
 Environment=PIP_WHISPER_BIN=%h/tools/whisper.cpp/build/bin/whisper-cli
 Environment=PIP_WHISPER_MODEL=%h/tools/whisper.cpp/models/ggml-small.bin
+# The ears live on the Pi 5: this box's memory belongs to the two llama-servers,
+# and a third GPU tenant does not fit (whisper's KV cache OOMs at load). The
+# local spawn below is the fallback if the Pi 5 is unreachable -- CPU-only,
+# because a per-spawn CUDA context costs ~0.5 GB this box does not have.
+Environment=PIP_WHISPER_URL=http://pi5.local:8092
+Environment=PIP_WHISPER_ARGS=-ng
 Environment=PIP_CAMERA=/dev/video0
 Environment=PIP_FRAME_W=1280
 Environment=PIP_FRAME_H=720

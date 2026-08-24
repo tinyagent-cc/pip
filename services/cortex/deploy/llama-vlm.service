@@ -7,7 +7,9 @@ Type=simple
 Environment=LD_LIBRARY_PATH=%h/tools/llama.cpp/build/bin
 Environment=PATH=/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin
 Environment=VLM_MODEL=%h/models/qwen3-vl-2b/Qwen3-VL-2B-Instruct-Q4_K_M.gguf
-Environment=VLM_MMPROJ=%h/models/qwen3-vl-2b/mmproj-F16.gguf
+# Q8_0 mmproj (445 MB) over F16 (819 MB): same eyes, and the saved RAM is what
+# lets the rest of the box breathe. ~/.config/pip/llama-vlm.env overrides.
+Environment=VLM_MMPROJ=%h/models/qwen3-vl-2b/mmproj-Q8_0.gguf
 EnvironmentFile=-%h/.config/pip/llama-vlm.env
 ExecStart=%h/tools/llama.cpp/build/bin/llama-server \
   -m ${VLM_MODEL} \

@@ -1,0 +1,18 @@
+[Unit]
+Description=Pip ears (whisper-server; the cortex posts wavs here)
+
+[Service]
+Type=simple
+# Resident model: the Jetson's memory belongs to the two llama-servers, so the
+# ears live on the Pi 5. The mic stays on the Jetson; only the wav travels.
+# -ac 512 sizes the encoder to ~10 s of audio instead of whisper's padded 30 s
+# window (the cortex clamps /listen to 10 s), which is the difference between
+# 12 s and 6 s per transcript on these cores. VAD gates the decoder: without it,
+# a clip of ambient room noise runs language auto-detection off the rails and a
+# 2 s transcript takes 20 s to say nothing.
+ExecStart=%h/tools/whisper.cpp/build/bin/whisper-server -m %h/models/ggml-small.bin --host 0.0.0.0 --port 8092 -t 4 -bs 1 -ac 512 -nf --vad --vad-model %h/tools/whisper.cpp/models/ggml-silero-v5.1.2.bin
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
