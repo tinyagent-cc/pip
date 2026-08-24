@@ -246,6 +246,26 @@ that llama.cpp cannot parse into `tool_calls`. The deep-agent loop runs on
 tool calls, so Gemma 3n cannot drive Pip. Qwen3-4B answered the same probe
 with a clean parallel `tool_calls` array on the first try.
 
+### Eyes, ears and voice are dials too
+
+Perception bench, 2026-08-24, all on the same box at once:
+
+- **Eyes**: Qwen3-VL-2B (Q4, auto-fit GPU) replaced SmolVLM-500M. On a
+  rendered Pip screen SmolVLM could only OCR the stats line; Qwen3-VL sees
+  "a pixelated minimalist face with wide startled eyes". Both are honest on
+  a black frame. Qwen2.5-VL-3B cannot load next to the text model. Cost: a
+  look is ~12 s of VLM instead of ~1 s; the eyes went from fast and blind
+  to slower and real. `~/.config/pip/llama-vlm.env` (VLM_MODEL, VLM_MMPROJ,
+  VLM_EXTRA) is the dial.
+- **Ears**: whisper small replaced base ("open shift releases 4.22" became
+  "OpenShift release is 4.22" for well under a second extra). large-v3-turbo
+  q5 OOMs at init beside the rest. `PIP_WHISPER_MODEL` is the dial.
+- **Voice**: Piper stays; Kokoro-82M A/B clips (en, fr; RTF 0.22 on a Mac,
+  no Arabic) are with Riadh for a listening verdict.
+- Fitting all three: the text model runs `-c 2048` and nobody pins
+  `-ngl 99` any more -- llama-server auto-fits layers to what the box has
+  left. A pinned 99 was the crash loop, twice.
+
 ### The screen narrates the machinery
 
 The HUD caption is a ticker for tiny_agent itself, coloured and iconed so a

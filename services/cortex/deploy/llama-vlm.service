@@ -1,16 +1,19 @@
 [Unit]
-Description=Pip Jetson VLM (SmolVLM-500M-Instruct Q8_0 + f16 mmproj, CUDA)
+Description=Pip Jetson VLM (model from ~/.config/pip/llama-vlm.env, CUDA)
 After=network-online.target
 
 [Service]
 Type=simple
 Environment=LD_LIBRARY_PATH=%h/tools/llama.cpp/build/bin
 Environment=PATH=/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin
+Environment=VLM_MODEL=%h/models/qwen3-vl-2b/Qwen3-VL-2B-Instruct-Q4_K_M.gguf
+Environment=VLM_MMPROJ=%h/models/qwen3-vl-2b/mmproj-F16.gguf
+EnvironmentFile=-%h/.config/pip/llama-vlm.env
 ExecStart=%h/tools/llama.cpp/build/bin/llama-server \
-  -m %h/models/smolvlm/SmolVLM-500M-Instruct-Q8_0.gguf \
-  --mmproj %h/models/smolvlm/mmproj-SmolVLM-500M-Instruct-f16.gguf \
+  -m ${VLM_MODEL} \
+  --mmproj ${VLM_MMPROJ} \
   --host 0.0.0.0 --port 8082 \
-  -ngl 99 -c 2048 -t 2
+  -c 2048 -t 2 $VLM_EXTRA
 Restart=always
 RestartSec=3
 

@@ -13,7 +13,7 @@ EnvironmentFile=-%h/.config/pip/llama-text.env
 ExecStart=%h/tools/llama.cpp/build/bin/llama-server \
   -m ${LLAMA_MODEL} \
   --host 0.0.0.0 --port 8081 \
-  -ngl 99 -c 4096 --jinja -t 4 $LLAMA_EXTRA
+  -c 4096 --jinja -t 4 $LLAMA_EXTRA
 Restart=always
 RestartSec=3
 
